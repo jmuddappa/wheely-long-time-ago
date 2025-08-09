@@ -71,8 +71,11 @@ function showSection(sectionId) {
     document.getElementById(sectionId).classList.remove('hidden');
 }
 
-function generateShareUrl(roomId) {
+function generateShareUrl(roomId, binId = null) {
     const baseUrl = window.location.href.split('#')[0];
+    if (binId) {
+        return `${baseUrl}#room-${roomId}&bin=${binId}`;
+    }
     return `${baseUrl}#room-${roomId}`;
 }
 
@@ -87,7 +90,7 @@ async function createMultiplayerGame() {
     
     try {
         const roomId = await multiplayer.createGame();
-        const shareUrl = generateShareUrl(roomId);
+        const shareUrl = generateShareUrl(roomId, multiplayer.binId);
         
         document.getElementById('share-url').value = shareUrl;
         showSection('create-room');

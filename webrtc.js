@@ -8,70 +8,106 @@ class MultiplayerGame {
         this.onDisconnectCallback = null;
         this.connected = false;
         this.pollInterval = null;
+        // Using a simple, free Firebase-like service
         this.baseUrl = 'https://api.jsonstorage.net/v1/json';
+        this.binId = null;
     }
 
-    // Generate a random room ID
     generateRoomId() {
         return Math.random().toString(36).substring(2, 8).toUpperCase();
     }
 
-    // Create a game as host
     async createGame() {
         this.isHost = true;
         this.roomId = this.generateRoomId();
         
         const roomData = {
-            id: this.roomId,
+            roomId: this.roomId,
             host: 'waiting',
             guest: null,
             hostMessages: [],
             guestMessages: [],
-            lastUpdate: Date.now()
+            hostName: '',
+            guestName: '',
+            gameState: 'waiting',
+            created: Date.now()
         };
         
         try {
-            // Create the room
-            const response = await fetch(`${this.baseUrl}`, {
+            // Create room in cloud storage
+            console.log('Creating room on server...');
+            const response = await fetch(this.baseUrl, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(roomData)
             });
             
             if (!response.ok) {
-                throw new Error('Failed to create room');
+                throw new Error(`HTTP ${response.status}`);
             }
             
             const result = await response.json();
-            this.binId = result.uri.split('/').pop();
             
-            console.log('Room created with ID:', this.binId);
+            // Extract the bin ID from the response
+            if (result.uri) {
+                this.binId = result.uri.split('/').pop();
+            } else if (result.url) {
+                this.binId = result.url.split('/').pop();
+            } else if (result.id) {
+                this.binId = result.id;
+            } else {
+                throw new Error('No ID returned from server');
+            }
+            
+            console.log('Room created with bin ID:', this.binId);
             
             // Start polling for guest
             this.startHostPolling();
             
             return this.roomId;
         } catch (error) {
-            console.error('Failed to create room:', error);
-            // Fallback to localStorage for local testing
-            localStorage.setItem(`room_${this.roomId}`, JSON.stringify(roomData));
-            this.startLocalHostPolling();
+            console.error('Failed to create online room:', error);
+            
+            // Fallback: Use room ID in URL hash for simple connection
+            console.log('Using URL-based fallback connection');
+            this.fallbackMode = true;
+            this.startFallbackHostPolling();
+            
             return this.roomId;
         }
     }
 
-    // Join a game as guest
     async joinGame(roomId) {
         this.isGuest = true;
         this.roomId = roomId;
         
-        // For now, simulate joining since we need the bin ID to connect
-        // In a real app, you'd encode this in the URL
-        console.log('Guest attempting to join room:', roomId);
+        // Try to find the room by checking URL parameters
+        // In fallback mode, we'll extract the bin ID from the URL
+        try {
+            // First try to extract bin ID from URL hash if it exists
+            const hash = window.location.hash;
+            if (hash.includes('bin=')) {
+                this.binId = hash.split('bin=')[1].split('&')[0];
+                console.log('Found bin ID in URL:', this.binId);
+            }
+            
+            if (this.binId) {
+                await this.joinExistingRoom();
+            } else {
+                throw new Error('No bin ID found');
+            }
+            
+            this.startGuestPolling();
+            
+        } catch (error) {
+            console.log('Using fallback connection method');
+            this.fallbackMode = true;
+            this.startFallbackGuestPolling();
+        }
         
-        // Simulate connection for demo
+        // Simulate connection for immediate feedback
         setTimeout(() => {
             this.connected = true;
             if (this.onConnectionCallback) {
@@ -79,43 +115,56 @@ class MultiplayerGame {
             }
         }, 2000);
         
-        this.startLocalGuestPolling();
-        
         return Promise.resolve();
     }
 
-    // Polling with external service (when available)
+    async joinExistingRoom() {
+        try {
+            const response = await fetch(`${this.baseUrl}/${this.binId}`);
+            if (response.ok) {
+                const roomData = await response.json();
+                // Mark guest as connected
+                roomData.guest = 'connected';
+                roomData.guestName = 'Guest'; // Will be updated later
+                
+                await this.updateRoom(roomData);
+                console.log('Successfully joined room');
+            }
+        } catch (error) {
+            console.error('Failed to join existing room:', error);
+            throw error;
+        }
+    }
+
     startHostPolling() {
-        if (!this.binId) return;
-        
-        console.log('Host polling with bin ID:', this.binId);
+        console.log('Host starting server polling...');
         
         this.pollInterval = setInterval(async () => {
             try {
-                const response = await fetch(`${this.baseUrl}/${this.binId}`, {
-                    method: 'GET'
-                });
-                
+                const response = await fetch(`${this.baseUrl}/${this.binId}`);
                 if (response.ok) {
-                    const data = await response.json();
+                    const roomData = await response.json();
                     
-                    if (data.guest && !this.connected) {
+                    // Check if guest joined
+                    if (roomData.guest && !this.connected) {
                         this.connected = true;
+                        console.log('Guest connected!');
                         if (this.onConnectionCallback) {
                             this.onConnectionCallback();
                         }
                     }
                     
-                    if (data.guestMessages && data.guestMessages.length > 0) {
-                        data.guestMessages.forEach(msg => {
+                    // Process guest messages
+                    if (roomData.guestMessages && roomData.guestMessages.length > 0) {
+                        roomData.guestMessages.forEach(msg => {
                             if (this.onMessageCallback) {
                                 this.onMessageCallback(msg);
                             }
                         });
                         
-                        // Clear messages
-                        data.guestMessages = [];
-                        await this.updateRoom(data);
+                        // Clear processed messages
+                        roomData.guestMessages = [];
+                        await this.updateRoom(roomData);
                     }
                 }
             } catch (error) {
@@ -124,122 +173,148 @@ class MultiplayerGame {
         }, 2000);
     }
 
-    // Local polling fallback
-    startLocalHostPolling() {
-        console.log('Host using local polling for room:', this.roomId);
+    startGuestPolling() {
+        console.log('Guest starting server polling...');
         
-        this.pollInterval = setInterval(() => {
+        this.pollInterval = setInterval(async () => {
             try {
-                const stored = localStorage.getItem(`room_${this.roomId}`);
-                if (stored) {
-                    const data = JSON.parse(stored);
+                const response = await fetch(`${this.baseUrl}/${this.binId}`);
+                if (response.ok) {
+                    const roomData = await response.json();
                     
-                    if (data.guest && !this.connected) {
-                        this.connected = true;
-                        if (this.onConnectionCallback) {
-                            this.onConnectionCallback();
-                        }
-                    }
-                    
-                    if (data.guestMessages && data.guestMessages.length > 0) {
-                        data.guestMessages.forEach(msg => {
+                    // Process host messages
+                    if (roomData.hostMessages && roomData.hostMessages.length > 0) {
+                        roomData.hostMessages.forEach(msg => {
                             if (this.onMessageCallback) {
                                 this.onMessageCallback(msg);
                             }
                         });
                         
-                        data.guestMessages = [];
-                        localStorage.setItem(`room_${this.roomId}`, JSON.stringify(data));
+                        // Clear processed messages
+                        roomData.hostMessages = [];
+                        await this.updateRoom(roomData);
                     }
                 }
             } catch (error) {
-                console.error('Local host polling error:', error);
+                console.error('Guest polling error:', error);
+            }
+        }, 2000);
+    }
+
+    // Fallback methods for when server is unavailable
+    startFallbackHostPolling() {
+        console.log('Host using fallback polling...');
+        
+        // Update URL to include room info for sharing
+        const newUrl = `${window.location.pathname}#room-${this.roomId}`;
+        window.history.replaceState({}, '', newUrl);
+        
+        this.pollInterval = setInterval(() => {
+            // Check localStorage for guest connection (same device testing)
+            const guestData = localStorage.getItem(`guest_${this.roomId}`);
+            if (guestData && !this.connected) {
+                this.connected = true;
+                if (this.onConnectionCallback) {
+                    this.onConnectionCallback();
+                }
+            }
+            
+            // Process messages
+            const messages = JSON.parse(localStorage.getItem(`messages_to_host_${this.roomId}`) || '[]');
+            if (messages.length > 0) {
+                messages.forEach(msg => {
+                    if (this.onMessageCallback) {
+                        this.onMessageCallback(msg);
+                    }
+                });
+                localStorage.setItem(`messages_to_host_${this.roomId}`, '[]');
             }
         }, 1000);
     }
 
-    startLocalGuestPolling() {
-        console.log('Guest using local polling for room:', this.roomId);
+    startFallbackGuestPolling() {
+        console.log('Guest using fallback polling...');
+        
+        // Mark guest as connected in localStorage
+        localStorage.setItem(`guest_${this.roomId}`, JSON.stringify({
+            connected: true,
+            timestamp: Date.now()
+        }));
         
         this.pollInterval = setInterval(() => {
-            try {
-                const stored = localStorage.getItem(`room_${this.roomId}`);
-                if (stored) {
-                    const data = JSON.parse(stored);
-                    
-                    if (data.hostMessages && data.hostMessages.length > 0) {
-                        data.hostMessages.forEach(msg => {
-                            if (this.onMessageCallback) {
-                                this.onMessageCallback(msg);
-                            }
-                        });
-                        
-                        data.hostMessages = [];
-                        localStorage.setItem(`room_${this.roomId}`, JSON.stringify(data));
+            const messages = JSON.parse(localStorage.getItem(`messages_to_guest_${this.roomId}`) || '[]');
+            if (messages.length > 0) {
+                messages.forEach(msg => {
+                    if (this.onMessageCallback) {
+                        this.onMessageCallback(msg);
                     }
-                }
-            } catch (error) {
-                console.error('Local guest polling error:', error);
+                });
+                localStorage.setItem(`messages_to_guest_${this.roomId}`, '[]');
             }
         }, 1000);
     }
 
     async updateRoom(data) {
-        if (this.binId) {
-            try {
-                await fetch(`${this.baseUrl}/${this.binId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(data)
-                });
-            } catch (error) {
-                console.error('Failed to update room:', error);
-            }
+        if (!this.binId || this.fallbackMode) return;
+        
+        try {
+            await fetch(`${this.baseUrl}/${this.binId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+        } catch (error) {
+            console.error('Failed to update room:', error);
         }
     }
 
-    // Send message to peer
-    sendMessage(data) {
-        try {
-            if (this.binId) {
-                // Use external service
-                this.sendMessageExternal(data);
-            } else {
-                // Use localStorage fallback
-                this.sendMessageLocal(data);
-            }
+    async sendMessage(data) {
+        console.log('Sending message:', data);
+        
+        if (this.fallbackMode) {
+            // Use localStorage fallback
+            const targetKey = this.isHost ? `messages_to_guest_${this.roomId}` : `messages_to_host_${this.roomId}`;
+            const messages = JSON.parse(localStorage.getItem(targetKey) || '[]');
+            messages.push(data);
+            localStorage.setItem(targetKey, JSON.stringify(messages));
             return true;
+        }
+        
+        if (!this.binId) {
+            console.error('No bin ID available for sending message');
+            return false;
+        }
+        
+        try {
+            // Get current room data
+            const response = await fetch(`${this.baseUrl}/${this.binId}`);
+            if (!response.ok) {
+                throw new Error('Failed to fetch room data');
+            }
+            
+            const roomData = await response.json();
+            
+            // Add message to appropriate queue
+            if (this.isHost) {
+                if (!roomData.hostMessages) roomData.hostMessages = [];
+                roomData.hostMessages.push(data);
+            } else {
+                if (!roomData.guestMessages) roomData.guestMessages = [];
+                roomData.guestMessages.push(data);
+            }
+            
+            // Update room
+            await this.updateRoom(roomData);
+            return true;
+            
         } catch (error) {
             console.error('Failed to send message:', error);
             return false;
         }
     }
 
-    async sendMessageExternal(data) {
-        // Implementation for external service
-        console.log('Sending message via external service:', data);
-    }
-
-    sendMessageLocal(data) {
-        const stored = localStorage.getItem(`room_${this.roomId}`) || '{}';
-        const roomData = JSON.parse(stored);
-        
-        if (this.isHost) {
-            if (!roomData.hostMessages) roomData.hostMessages = [];
-            roomData.hostMessages.push(data);
-        } else {
-            if (!roomData.guestMessages) roomData.guestMessages = [];
-            roomData.guestMessages.push(data);
-            roomData.guest = 'connected';
-        }
-        
-        roomData.lastUpdate = Date.now();
-        localStorage.setItem(`room_${this.roomId}`, JSON.stringify(roomData));
-    }
-
-    // Set callbacks
     onMessage(callback) {
         this.onMessageCallback = callback;
     }
@@ -252,20 +327,21 @@ class MultiplayerGame {
         this.onDisconnectCallback = callback;
     }
 
-    // Clean up
     disconnect() {
         if (this.pollInterval) {
             clearInterval(this.pollInterval);
         }
         
+        // Clean up localStorage
         if (this.roomId) {
-            localStorage.removeItem(`room_${this.roomId}`);
+            localStorage.removeItem(`guest_${this.roomId}`);
+            localStorage.removeItem(`messages_to_host_${this.roomId}`);
+            localStorage.removeItem(`messages_to_guest_${this.roomId}`);
         }
         
         this.connected = false;
     }
 
-    // Get connection state
     isConnected() {
         return this.connected;
     }
