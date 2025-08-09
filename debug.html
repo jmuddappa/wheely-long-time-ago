@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Test</title>
+</head>
+<body>
+    <h1>Debug Test</h1>
+    <button onclick="testHost()">Test Host</button>
+    <button onclick="testGuest()">Test Guest</button>
+    <button onclick="checkStorage()">Check Storage</button>
+    <div id="output"></div>
+
+    <script>
+        function log(msg) {
+            document.getElementById('output').innerHTML += msg + '<br>';
+            console.log(msg);
+        }
+
+        function testHost() {
+            const roomId = 'TEST123';
+            localStorage.setItem(`host_${roomId}`, JSON.stringify({
+                connected: true,
+                timestamp: Date.now()
+            }));
+            log('Host created for room: ' + roomId);
+        }
+
+        function testGuest() {
+            const roomId = 'TEST123';
+            const hostData = localStorage.getItem(`host_${roomId}`);
+            if (hostData) {
+                log('Host found: ' + hostData);
+                localStorage.setItem(`guest_${roomId}`, JSON.stringify({
+                    connected: true,
+                    timestamp: Date.now()
+                }));
+                log('Guest connected to room: ' + roomId);
+            } else {
+                log('Host NOT found for room: ' + roomId);
+            }
+        }
+
+        function checkStorage() {
+            log('=== All localStorage items ===');
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                const value = localStorage.getItem(key);
+                log(key + ' = ' + value);
+            }
+        }
+    </script>
+</body>
+</html>
