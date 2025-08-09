@@ -36,20 +36,40 @@ function generateShareUrl(roomId) {
 
 // Multiplayer game flow
 async function createMultiplayerGame() {
-    const roomId = await multiplayer.createGame();
-    const shareUrl = generateShareUrl(roomId);
+    const button = document.getElementById('create-game');
+    const originalText = button.textContent;
     
-    document.getElementById('share-url').value = shareUrl;
-    showSection('create-room');
+    // Show loading state
+    button.innerHTML = '<span class="loading">Creating Game</span>';
+    button.disabled = true;
     
-    // Set multiplayer flags
-    isMultiplayer = true;
-    isHost = true;
+    try {
+        const roomId = await multiplayer.createGame();
+        const shareUrl = generateShareUrl(roomId);
+        
+        document.getElementById('share-url').value = shareUrl;
+        showSection('create-room');
+        
+        // Set multiplayer flags
+        isMultiplayer = true;
+        isHost = true;
+        
+        // Set up multiplayer callbacks
+        multiplayer.onConnection(() => {
+            document.getElementById('connection-status').textContent = '🎉 Player connected! Enter your name and start playing.';
+        });
+    } catch (error) {
+        console.error('Failed to create game:', error);
+        button.textContent = 'Failed - Try Again';
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.disabled = false;
+        }, 2000);
+        return;
+    }
     
-    // Set up multiplayer callbacks
-    multiplayer.onConnection(() => {
-        document.getElementById('connection-status').textContent = 'Player connected! Enter your name and start playing.';
-    });
+    button.textContent = originalText;
+    button.disabled = false;
     
     multiplayer.onMessage((data) => {
         handleMultiplayerMessage(data);
@@ -217,10 +237,22 @@ function startGame() {
 
 function joinGameAsGuest() {
     const guestName = document.getElementById('guest-name').value.trim();
+    const button = document.getElementById('join-game');
+    
     if (!guestName) {
-        alert('Please enter your name!');
+        // Add shake animation for empty name
+        const input = document.getElementById('guest-name');
+        input.style.animation = 'shake 0.5s ease-in-out';
+        input.focus();
+        setTimeout(() => {
+            input.style.animation = '';
+        }, 500);
         return;
     }
+    
+    // Show loading state
+    button.innerHTML = '<span class="loading">Joining</span>';
+    button.disabled = true;
     
     isMultiplayer = true;
     isHost = false;
@@ -233,8 +265,13 @@ function joinGameAsGuest() {
     });
     
     // Update status and wait for host to start game
-    document.getElementById('join-status').textContent = 'Connected! Waiting for host to start the game...';
-    document.getElementById('join-game').style.display = 'none';
+    document.getElementById('join-status').textContent = '🎮 Connected! Waiting for host to start the game...';
+    button.style.display = 'none';
+    
+    // Haptic feedback
+    if (navigator.vibrate) {
+        navigator.vibrate([50, 50, 50]);
+    }
 }
 
 function submitGuesses() {
@@ -350,6 +387,48 @@ function calculateResults(guess1, guess2, p1Name, p2Name) {
 function displayResults(resultsHTML) {
     document.getElementById('results-content').innerHTML = resultsHTML;
     showSection('game-results');
+    
+    // Add celebration effect
+    setTimeout(() => {
+        const winnerElement = document.querySelector('.winner');
+        if (winnerElement) {
+            // Haptic feedback for winner
+            if (navigator.vibrate) {
+                navigator.vibrate([100, 50, 100, 50, 200]);
+            }
+            
+            // Add confetti effect (simplified)
+            createConfetti();
+        }
+    }, 500);
+}
+
+function createConfetti() {
+    // Simple confetti effect using CSS animations
+    const confettiColors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7'];
+    
+    for (let i = 0; i < 20; i++) {
+        const confetti = document.createElement('div');
+        confetti.style.cssText = `
+            position: fixed;
+            width: 6px;
+            height: 6px;
+            background: ${confettiColors[Math.floor(Math.random() * confettiColors.length)]};
+            top: -10px;
+            left: ${Math.random() * 100}vw;
+            z-index: 1000;
+            pointer-events: none;
+            animation: confettiFall 2s ease-out forwards;
+            border-radius: 50%;
+        `;
+        
+        document.body.appendChild(confetti);
+        
+        // Remove confetti after animation
+        setTimeout(() => {
+            confetti.remove();
+        }, 2000);
+    }
 }
 
 function playAgain() {
@@ -385,12 +464,29 @@ function resetGame() {
 
 function copyShareLink() {
     const shareUrl = document.getElementById('share-url');
+    const button = document.getElementById('copy-link');
+    
     shareUrl.select();
     shareUrl.setSelectionRange(0, 99999);
+    
     navigator.clipboard.writeText(shareUrl.value).then(() => {
-        const button = document.getElementById('copy-link');
         const originalText = button.textContent;
-        button.textContent = 'Copied!';
+        button.textContent = '✓ Copied!';
+        button.classList.add('copy-btn', 'copied');
+        
+        // Haptic feedback on mobile
+        if (navigator.vibrate) {
+            navigator.vibrate(50);
+        }
+        
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.classList.remove('copied');
+        }, 2000);
+    }).catch(() => {
+        // Fallback for older browsers
+        const originalText = button.textContent;
+        button.textContent = 'Press Ctrl+C';
         setTimeout(() => {
             button.textContent = originalText;
         }, 2000);
