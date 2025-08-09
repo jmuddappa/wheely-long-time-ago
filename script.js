@@ -165,6 +165,15 @@ function handleMultiplayerMessage(data) {
             currentInvention = data.invention;
             player1Name = data.player1Name;
             player2Name = data.player2Name;
+            
+            // Sync game state from host
+            if (data.gameState) {
+                currentRound = data.gameState.currentRound;
+                totalRounds = data.gameState.totalRounds;
+                player1Score = data.gameState.player1Score;
+                player2Score = data.gameState.player2Score;
+            }
+            
             startMultiplayerRound();
             break;
             
@@ -176,12 +185,39 @@ function handleMultiplayerMessage(data) {
             break;
             
         case 'results':
+            // Sync game state from host
+            if (data.gameState) {
+                currentRound = data.gameState.currentRound;
+                player1Score = data.gameState.player1Score;
+                player2Score = data.gameState.player2Score;
+                currentInvention = data.gameState.invention;
+            }
             displayResults(data.results);
+            break;
+            
+        case 'nextRound':
+            // Sync round number and scores with host
+            currentRound = data.round;
+            if (data.scores) {
+                player1Score = data.scores.player1Score;
+                player2Score = data.scores.player2Score;
+            }
+            if (data.invention) {
+                currentInvention = data.invention;
+            }
+            resetRound();
+            startNextRound();
             break;
             
         case 'playAgain':
             resetGame();
             startGame();
+            break;
+            
+        case 'newGame':
+            // Reset everything for a new game
+            resetGame();
+            showSection('join-room');
             break;
     }
 }
@@ -215,10 +251,19 @@ function checkIfBothGuessed() {
         // Both players have guessed, calculate results
         if (isHost) {
             const results = calculateResults(myGuess, peerGuess, player1Name, player2Name);
+            
+            // Send complete game state to guest
             multiplayer.sendMessage({
                 type: 'results',
-                results: results
+                results: results,
+                gameState: {
+                    currentRound: currentRound,
+                    player1Score: player1Score,
+                    player2Score: player2Score,
+                    invention: currentInvention
+                }
             });
+            
             displayResults(results);
         }
     }
@@ -249,12 +294,18 @@ function startGame() {
         
         currentInvention = getRandomInvention();
         
-        // Send game start to peer
+        // Send game start to peer with complete state
         multiplayer.sendMessage({
             type: 'gameStart',
             invention: currentInvention,
             player1Name: player1Name,
-            player2Name: player2Name
+            player2Name: player2Name,
+            gameState: {
+                currentRound: currentRound,
+                totalRounds: totalRounds,
+                player1Score: player1Score,
+                player2Score: player2Score
+            }
         });
         startMultiplayerRound();
         
@@ -515,10 +566,14 @@ function playAgain() {
     // Continue to next round
     if (isMultiplayer) {
         if (isHost) {
+            // Get new invention for next round
+            currentInvention = getRandomInvention();
+            
             multiplayer.sendMessage({ 
                 type: 'nextRound',
                 round: currentRound,
-                scores: { player1Score, player2Score }
+                scores: { player1Score, player2Score },
+                invention: currentInvention
             });
         }
         resetRound();
@@ -607,7 +662,11 @@ function resetRound() {
 }
 
 function startNextRound() {
-    currentInvention = getRandomInvention();
+    // Only host generates new invention (guests get it via message)
+    if (!isMultiplayer || isHost) {
+        currentInvention = getRandomInvention();
+    }
+    
     document.getElementById('invention-name').textContent = currentInvention.name;
     
     // Update round counter if there's a display for it
