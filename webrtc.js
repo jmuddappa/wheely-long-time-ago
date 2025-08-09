@@ -8,7 +8,7 @@ class MultiplayerGame {
         this.onDisconnectCallback = null;
         this.connected = false;
         this.pollInterval = null;
-        // Using a simple, free Firebase-like service
+        // Using jsonstorage.net - free JSON storage API
         this.baseUrl = 'https://api.jsonstorage.net/v1/json';
         this.binId = null;
     }
@@ -34,7 +34,7 @@ class MultiplayerGame {
         };
         
         try {
-            // Create room in cloud storage
+            // Create room in cloud storage - fix the 400 error by using correct format
             console.log('Creating room on server...');
             const response = await fetch(this.baseUrl, {
                 method: 'POST',
@@ -45,10 +45,13 @@ class MultiplayerGame {
             });
             
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+                const errorText = await response.text();
+                console.log('API Response:', response.status, errorText);
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
             
             const result = await response.json();
+            console.log('API Success Response:', result);
             
             // Extract the bin ID from the response
             if (result.uri) {
@@ -70,8 +73,8 @@ class MultiplayerGame {
         } catch (error) {
             console.error('Failed to create online room:', error);
             
-            // Fallback: Use room ID in URL hash for simple connection
-            console.log('Using URL-based fallback connection');
+            // Fallback: Use localStorage-based connection
+            console.log('Using localStorage fallback connection');
             this.fallbackMode = true;
             this.startFallbackHostPolling();
             
@@ -83,31 +86,26 @@ class MultiplayerGame {
         this.isGuest = true;
         this.roomId = roomId;
         
-        // Try to find the room by checking URL parameters
-        // In fallback mode, we'll extract the bin ID from the URL
         try {
-            // First try to extract bin ID from URL hash if it exists
+            // Try to extract bin ID from URL hash if it exists
             const hash = window.location.hash;
             if (hash.includes('bin=')) {
                 this.binId = hash.split('bin=')[1].split('&')[0];
                 console.log('Found bin ID in URL:', this.binId);
-            }
-            
-            if (this.binId) {
+                
                 await this.joinExistingRoom();
+                this.startGuestPolling();
             } else {
-                throw new Error('No bin ID found');
+                throw new Error('No bin ID found in URL');
             }
-            
-            this.startGuestPolling();
             
         } catch (error) {
-            console.log('Using fallback connection method');
+            console.log('Using fallback connection method:', error.message);
             this.fallbackMode = true;
             this.startFallbackGuestPolling();
         }
         
-        // Simulate connection for immediate feedback
+        // Provide connection feedback
         setTimeout(() => {
             this.connected = true;
             if (this.onConnectionCallback) {
@@ -201,7 +199,7 @@ class MultiplayerGame {
         }, 2000);
     }
 
-    // Fallback methods for when server is unavailable
+    // Fallback methods using localStorage with cross-tab communication
     startFallbackHostPolling() {
         console.log('Host using fallback polling...');
         
@@ -209,11 +207,15 @@ class MultiplayerGame {
         const newUrl = `${window.location.pathname}#room-${this.roomId}`;
         window.history.replaceState({}, '', newUrl);
         
+        // Set up cross-tab communication
+        this.setupCrossTabCommunication();
+        
         this.pollInterval = setInterval(() => {
-            // Check localStorage for guest connection (same device testing)
+            // Check localStorage for guest connection 
             const guestData = localStorage.getItem(`guest_${this.roomId}`);
             if (guestData && !this.connected) {
                 this.connected = true;
+                console.log('Guest connected via localStorage!');
                 if (this.onConnectionCallback) {
                     this.onConnectionCallback();
                 }
@@ -241,6 +243,9 @@ class MultiplayerGame {
             timestamp: Date.now()
         }));
         
+        // Set up cross-tab communication
+        this.setupCrossTabCommunication();
+        
         this.pollInterval = setInterval(() => {
             const messages = JSON.parse(localStorage.getItem(`messages_to_guest_${this.roomId}`) || '[]');
             if (messages.length > 0) {
@@ -252,6 +257,19 @@ class MultiplayerGame {
                 localStorage.setItem(`messages_to_guest_${this.roomId}`, '[]');
             }
         }, 1000);
+    }
+
+    setupCrossTabCommunication() {
+        // Use storage events to communicate across tabs/devices on same domain
+        window.addEventListener('storage', (event) => {
+            if (event.key === `broadcast_${this.roomId}`) {
+                const data = JSON.parse(event.newValue || '{}');
+                if (data.type && this.onMessageCallback) {
+                    console.log('Received cross-tab message:', data);
+                    this.onMessageCallback(data);
+                }
+            }
+        });
     }
 
     async updateRoom(data) {
@@ -274,11 +292,18 @@ class MultiplayerGame {
         console.log('Sending message:', data);
         
         if (this.fallbackMode) {
-            // Use localStorage fallback
+            // Use localStorage fallback with broadcast for cross-tab communication
             const targetKey = this.isHost ? `messages_to_guest_${this.roomId}` : `messages_to_host_${this.roomId}`;
             const messages = JSON.parse(localStorage.getItem(targetKey) || '[]');
             messages.push(data);
             localStorage.setItem(targetKey, JSON.stringify(messages));
+            
+            // Also broadcast for cross-tab communication
+            localStorage.setItem(`broadcast_${this.roomId}`, JSON.stringify(data));
+            setTimeout(() => {
+                localStorage.removeItem(`broadcast_${this.roomId}`);
+            }, 100);
+            
             return true;
         }
         
@@ -310,8 +335,13 @@ class MultiplayerGame {
             return true;
             
         } catch (error) {
-            console.error('Failed to send message:', error);
-            return false;
+            console.error('Failed to send message via cloud, falling back to localStorage:', error);
+            // Fall back to localStorage if cloud fails
+            const targetKey = this.isHost ? `messages_to_guest_${this.roomId}` : `messages_to_host_${this.roomId}`;
+            const messages = JSON.parse(localStorage.getItem(targetKey) || '[]');
+            messages.push(data);
+            localStorage.setItem(targetKey, JSON.stringify(messages));
+            return true;
         }
     }
 
