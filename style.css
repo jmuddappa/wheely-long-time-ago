@@ -1,25 +1,41 @@
-/* Import modern fonts */
-@import url('https://fonts.googleapis.com/css2?family=NYTimes:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+/* Import clean, modern fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fraunces:wght@400;500;600;700&display=swap');
 
 :root {
-    --primary-color: #121212;
-    --secondary-color: #6c757d;
-    --accent-color: #ffd700;
-    --success-color: #28a745;
-    --error-color: #dc3545;
-    --warning-color: #fd7e14;
-    --background: #fefefe;
+    /* Modern, accessible color palette */
+    --primary-color: #1a1a1a;
+    --secondary-color: #64748b;
+    --accent-color: #0ea5e9;
+    --accent-light: #e0f2fe;
+    --success-color: #10b981;
+    --error-color: #ef4444;
+    --warning-color: #f59e0b;
+    
+    /* Clean backgrounds */
+    --background: #fafafa;
     --surface: #ffffff;
-    --surface-variant: #f8f9fa;
-    --border-color: #e9ecef;
-    --shadow-light: 0 2px 8px rgba(0,0,0,0.04);
-    --shadow-medium: 0 4px 20px rgba(0,0,0,0.08);
-    --shadow-heavy: 0 8px 32px rgba(0,0,0,0.12);
+    --surface-hover: #f8fafc;
+    --surface-variant: #f1f5f9;
+    --border-color: #e2e8f0;
+    --border-hover: #cbd5e1;
+    
+    /* Refined shadows */
+    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    
+    /* Modern radius */
+    --radius-xs: 4px;
     --radius-sm: 8px;
     --radius-md: 12px;
     --radius-lg: 16px;
-    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    --bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    --radius-xl: 24px;
+    
+    /* Smooth transitions */
+    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 * {
@@ -29,36 +45,39 @@
 }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--background);
     color: var(--primary-color);
     line-height: 1.6;
     min-height: 100vh;
-    overflow-x: hidden;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .container {
-    max-width: 480px;
+    max-width: 520px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 24px;
     background: var(--surface);
     min-height: 100vh;
-    box-shadow: var(--shadow-medium);
+    box-shadow: var(--shadow-sm);
     position: relative;
-    animation: slideInUp 0.6s var(--bounce);
+    animation: slideInUp 0.5s ease-out;
 }
 
 .version {
     position: absolute;
-    top: 12px;
-    right: 16px;
+    top: 16px;
+    right: 20px;
     font-size: 0.75rem;
     color: var(--secondary-color);
     font-weight: 500;
     background: var(--surface-variant);
-    padding: 4px 8px;
-    border-radius: 12px;
+    padding: 6px 10px;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
+    font-family: 'Inter', monospace;
 }
 
 @keyframes slideInUp {
@@ -74,56 +93,55 @@ body {
 
 /* Typography */
 h1 {
-    font-family: 'NYTimes', Georgia, serif;
-    font-size: clamp(1.8rem, 5vw, 2.5rem);
-    font-weight: 700;
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: clamp(2rem, 6vw, 3rem);
+    font-weight: 600;
     text-align: center;
     color: var(--primary-color);
-    margin-bottom: 8px;
-    letter-spacing: -0.02em;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    margin-bottom: 12px;
+    margin-top: 32px;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
 }
 
 .subtitle {
-    font-size: 0.95rem;
+    font-size: 1rem;
     text-align: center;
     color: var(--secondary-color);
-    margin-bottom: 40px;
+    margin-bottom: 48px;
     font-weight: 400;
-    line-height: 1.5;
-    max-width: 320px;
+    line-height: 1.6;
+    max-width: 400px;
     margin-left: auto;
     margin-right: auto;
 }
 
 h2 {
-    font-family: 'NYTimes', Georgia, serif;
-    font-size: 1.5rem;
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 1.75rem;
     font-weight: 600;
     color: var(--primary-color);
     margin-bottom: 24px;
     text-align: center;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
+    line-height: 1.3;
 }
 
 /* Sections */
 .section {
-    margin: 32px 0;
-    padding: 32px 24px;
-    border-radius: var(--radius-lg);
+    margin: 24px 0;
+    padding: 32px;
+    border-radius: var(--radius-xl);
     background: var(--surface);
     border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-light);
-    transition: var(--transition);
-    animation: fadeIn 0.5s ease-out;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition-slow);
+    animation: fadeIn 0.4s ease-out;
 }
 
 .section:hover {
-    box-shadow: var(--shadow-medium);
-    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--border-hover);
 }
 
 @keyframes fadeIn {
@@ -145,8 +163,8 @@ h2 {
 .game-mode-buttons {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    margin-bottom: 24px;
+    gap: 12px;
+    margin-bottom: 32px;
 }
 
 .game-mode-buttons button {
@@ -155,62 +173,62 @@ h2 {
     height: 56px;
     font-size: 1rem;
     font-weight: 500;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     transition: var(--transition);
     position: relative;
     overflow: hidden;
+    background: var(--surface-variant);
+    color: var(--primary-color);
+    border: 1px solid var(--border-color);
 }
 
-.game-mode-buttons button::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-    transition: left 0.5s;
+.game-mode-buttons button:hover {
+    background: var(--surface-hover);
+    border-color: var(--accent-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
 }
 
-.game-mode-buttons button:hover::before {
-    left: 100%;
+.game-mode-buttons button:active {
+    transform: translateY(0);
 }
 
 /* Buttons */
 button {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--accent-color);
     color: white;
     border: none;
-    padding: 16px 32px;
-    border-radius: var(--radius-md);
-    font-size: 1rem;
+    padding: 14px 28px;
+    border-radius: var(--radius-lg);
+    font-size: 0.95rem;
     font-weight: 500;
     cursor: pointer;
     display: block;
-    margin: 24px auto;
+    margin: 20px auto;
     transition: var(--transition);
-    position: relative;
-    overflow: hidden;
     min-height: 48px;
     font-family: inherit;
-    letter-spacing: 0.01em;
+    letter-spacing: 0.005em;
+    box-shadow: var(--shadow-xs);
 }
 
 button:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-medium);
+    background: #0284c7;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
 }
 
 button:active {
     transform: translateY(0);
-    transition: transform 0.1s;
+    box-shadow: var(--shadow-xs);
 }
 
 button:disabled {
     background: var(--secondary-color);
     cursor: not-allowed;
     transform: none;
-    opacity: 0.7;
+    opacity: 0.6;
+    box-shadow: none;
 }
 
 button:disabled:hover {
@@ -220,16 +238,24 @@ button:disabled:hover {
 
 /* Special button styles */
 .copy-btn {
-    background: var(--accent-color);
+    background: var(--surface-variant);
     color: var(--primary-color);
+    border: 1px solid var(--border-color);
     min-width: 100px;
     padding: 12px 20px;
-    font-weight: 600;
+    font-weight: 500;
+    margin: 0;
+}
+
+.copy-btn:hover {
+    background: var(--surface-hover);
+    border-color: var(--accent-color);
 }
 
 .copy-btn.copied {
     background: var(--success-color);
     color: white;
+    border-color: var(--success-color);
     animation: pulse 0.3s ease-out;
 }
 
@@ -256,45 +282,48 @@ button:disabled:hover {
 .player-info {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    margin-top: 16px;
+    gap: 16px;
+    margin-top: 20px;
 }
 
 label {
-    font-weight: 600;
+    font-weight: 500;
     font-size: 0.9rem;
     color: var(--primary-color);
-    margin-bottom: 4px;
-    letter-spacing: 0.01em;
+    margin-bottom: 6px;
+    letter-spacing: 0.005em;
 }
 
 input {
     padding: 16px;
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
     font-size: 1rem;
     font-family: inherit;
     transition: var(--transition);
     background: var(--surface);
     color: var(--primary-color);
+    box-shadow: var(--shadow-xs);
 }
 
 input:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    transform: translateY(-1px);
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px var(--accent-light);
 }
 
 input:disabled {
     background: var(--surface-variant);
     color: var(--secondary-color);
     cursor: not-allowed;
+    border-color: var(--border-color);
+    box-shadow: none;
 }
 
 input[readonly] {
     background: var(--surface-variant);
     cursor: text;
+    border-color: var(--border-color);
 }
 
 /* Share Link */
@@ -305,7 +334,7 @@ input[readonly] {
     align-items: stretch;
     background: var(--surface-variant);
     padding: 8px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
 }
 
@@ -316,16 +345,18 @@ input[readonly] {
     background: transparent;
     padding: 12px 16px;
     margin: 0;
+    box-shadow: none;
+    border-radius: var(--radius-md);
 }
 
 .share-link input:focus {
     box-shadow: none;
-    transform: none;
+    background: var(--surface);
 }
 
 .share-link button {
     margin: 0;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     font-size: 0.9rem;
 }
 
@@ -359,18 +390,15 @@ input[readonly] {
 
 /* Game Play */
 #invention-name {
-    font-family: 'NYTimes', Georgia, serif;
-    font-size: clamp(1.5rem, 6vw, 2.2rem);
-    font-weight: 700;
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: clamp(1.75rem, 6vw, 2.5rem);
+    font-weight: 600;
     text-align: center;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
     color: var(--primary-color);
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    letter-spacing: -0.01em;
-    animation: fadeInScale 0.6s var(--bounce);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    animation: fadeInScale 0.5s ease-out;
 }
 
 @keyframes fadeInScale {
@@ -387,9 +415,12 @@ input[readonly] {
 .game-instruction {
     text-align: center;
     color: var(--secondary-color);
-    margin-bottom: 24px;
-    font-size: 0.95rem;
-    line-height: 1.5;
+    margin-bottom: 32px;
+    font-size: 1rem;
+    line-height: 1.6;
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 /* Results */
@@ -443,11 +474,11 @@ input[readonly] {
     text-align: center;
     color: var(--primary-color);
     margin: 24px 0;
-    padding: 20px;
-    background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
-    border-radius: var(--radius-md);
-    border-left: 4px solid var(--warning-color);
-    animation: correctAnswerReveal 0.8s var(--bounce);
+    padding: 24px;
+    background: var(--accent-light);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--accent-color);
+    animation: correctAnswerReveal 0.6s ease-out;
 }
 
 @keyframes correctAnswerReveal {
@@ -502,17 +533,19 @@ input[readonly] {
 }
 
 /* Mobile Responsiveness */
-@media (max-width: 480px) {
+@media (max-width: 640px) {
     .container {
-        padding: 16px;
+        padding: 20px;
         margin: 0;
         border-radius: 0;
         min-height: 100vh;
+        box-shadow: none;
     }
 
     .section {
-        padding: 24px 20px;
-        margin: 24px 0;
+        padding: 24px;
+        margin: 20px 0;
+        border-radius: var(--radius-lg);
     }
 
     .player-inputs, .guess-inputs {
@@ -523,31 +556,53 @@ input[readonly] {
     .share-link {
         flex-direction: column;
         gap: 12px;
+        padding: 12px;
+    }
+
+    .share-link input {
+        padding: 14px;
     }
 
     h1 {
-        font-size: 2rem;
-        margin-bottom: 12px;
+        font-size: clamp(1.75rem, 8vw, 2.25rem);
+        margin-bottom: 16px;
+    }
+
+    h2 {
+        font-size: 1.5rem;
     }
 
     .subtitle {
-        font-size: 0.9rem;
-        margin-bottom: 32px;
+        font-size: 0.95rem;
+        margin-bottom: 40px;
+        max-width: 350px;
     }
 
     button {
-        padding: 14px 24px;
+        padding: 16px 24px;
+        font-size: 1rem;
+        width: 100%;
+        margin: 16px 0;
+    }
+
+    .game-mode-buttons button {
+        height: 52px;
         font-size: 0.95rem;
     }
 
     input {
-        padding: 14px;
+        padding: 16px;
         font-size: 16px; /* Prevents zoom on iOS */
     }
 
     #invention-name {
-        font-size: 1.8rem;
-        margin-bottom: 12px;
+        font-size: clamp(1.5rem, 7vw, 2rem);
+        margin-bottom: 16px;
+    }
+
+    .game-instruction {
+        font-size: 0.95rem;
+        margin-bottom: 28px;
     }
 }
 
@@ -634,13 +689,15 @@ input:focus-visible {
 }
 
 .fun-fact {
-    background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
-    padding: 16px;
-    border-radius: var(--radius-sm);
-    margin: 16px 0;
-    border-left: 4px solid #fdcb6e;
-    font-style: italic;
-    animation: slideInLeft 0.5s ease-out;
+    background: var(--surface-variant);
+    padding: 20px;
+    border-radius: var(--radius-lg);
+    margin: 20px 0;
+    border: 1px solid var(--border-color);
+    font-style: normal;
+    color: var(--secondary-color);
+    animation: slideInLeft 0.4s ease-out;
+    line-height: 1.6;
 }
 
 .wheel-comparison {
