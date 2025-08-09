@@ -7,9 +7,9 @@ class MultiplayerGame {
         this.onConnectionCallback = null;
         this.onDisconnectCallback = null;
         this.connected = false;
-        this.gameRef = null;
-        this.messagesRef = null;
-        this.listeners = [];
+        this.gameSubscription = null;
+        this.messageSubscription = null;
+        this.fallbackMode = false;
     }
 
     generateRoomId() {
@@ -20,40 +20,46 @@ class MultiplayerGame {
         this.isHost = true;
         this.roomId = this.generateRoomId();
         
-        console.log('Creating Firebase game room:', this.roomId);
+        console.log('Creating Supabase game room:', this.roomId);
         
         try {
-            // Reference to this game in Firebase
-            this.gameRef = window.firebaseDB.ref('games/' + this.roomId);
-            
-            const roomData = {
-                roomId: this.roomId,
-                host: 'waiting',
-                guest: null,
-                hostName: '',
-                guestName: '',
-                gameState: 'waiting',
-                created: firebase.database.ServerValue.TIMESTAMP,
-                lastActivity: firebase.database.ServerValue.TIMESTAMP
-            };
-            
-            // Create the room
-            await this.gameRef.set(roomData);
-            console.log('Firebase room created successfully');
-            
+            // Create room in Supabase
+            const { data, error } = await window.supabase
+                .from('game_rooms')
+                .insert([
+                    {
+                        room_id: this.roomId,
+                        host_connected: true,
+                        guest_connected: false,
+                        host_name: '',
+                        guest_name: '',
+                        game_state: 'waiting',
+                        created_at: new Date().toISOString(),
+                        last_activity: new Date().toISOString()
+                    }
+                ])
+                .select();
+
+            if (error) {
+                console.error('Supabase create error:', error);
+                throw error;
+            }
+
+            console.log('Supabase room created successfully:', data);
+
             // Start listening for changes
-            this.startFirebaseListeners();
-            
+            this.startSupabaseListeners();
+
             return this.roomId;
-            
+
         } catch (error) {
-            console.error('Failed to create Firebase room:', error);
-            
+            console.error('Failed to create Supabase room:', error);
+
             // Fallback to localStorage
             console.log('Using localStorage fallback');
             this.fallbackMode = true;
             this.startFallbackHostPolling();
-            
+
             return this.roomId;
         }
     }
@@ -61,28 +67,34 @@ class MultiplayerGame {
     async joinGame(roomId) {
         this.isGuest = true;
         this.roomId = roomId;
-        
-        console.log('Joining Firebase game room:', roomId);
-        
+
+        console.log('Joining Supabase game room:', roomId);
+
         try {
-            // Reference to this game in Firebase
-            this.gameRef = window.firebaseDB.ref('games/' + roomId);
-            
-            // Check if room exists
-            const snapshot = await this.gameRef.once('value');
-            if (!snapshot.exists()) {
-                throw new Error('Room does not exist');
+            // Check if room exists and join it
+            const { data, error } = await window.supabase
+                .from('game_rooms')
+                .update({ 
+                    guest_connected: true,
+                    last_activity: new Date().toISOString()
+                })
+                .eq('room_id', roomId)
+                .select();
+
+            if (error) {
+                console.error('Supabase join error:', error);
+                throw error;
             }
-            
-            console.log('Room found, joining...');
-            
-            // Mark guest as connected
-            await this.gameRef.child('guest').set('connected');
-            await this.gameRef.child('lastActivity').set(firebase.database.ServerValue.TIMESTAMP);
-            
+
+            if (!data || data.length === 0) {
+                throw new Error('Room not found');
+            }
+
+            console.log('Successfully joined room:', data);
+
             // Start listening for changes
-            this.startFirebaseListeners();
-            
+            this.startSupabaseListeners();
+
             // Simulate connection for immediate feedback
             setTimeout(() => {
                 this.connected = true;
@@ -90,111 +102,134 @@ class MultiplayerGame {
                     this.onConnectionCallback();
                 }
             }, 1000);
-            
+
             return Promise.resolve();
-            
+
         } catch (error) {
-            console.error('Failed to join Firebase room:', error);
-            
+            console.error('Failed to join Supabase room:', error);
+
             // Fallback to localStorage
             console.log('Using localStorage fallback');
             this.fallbackMode = true;
             this.startFallbackGuestPolling();
-            
+
             return Promise.resolve();
         }
     }
 
-    startFirebaseListeners() {
-        if (!this.gameRef) return;
-        
-        console.log('Starting Firebase listeners...');
-        
-        // Listen for game state changes
-        const gameListener = this.gameRef.on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (!data) return;
-            
-            console.log('Firebase game state update:', data);
-            
-            // Check for guest connection (host only)
-            if (this.isHost && data.guest && data.guest === 'connected' && !this.connected) {
-                this.connected = true;
-                console.log('Guest connected via Firebase!');
-                if (this.onConnectionCallback) {
-                    this.onConnectionCallback();
-                }
-            }
-        });
-        
-        this.listeners.push({ ref: this.gameRef, listener: gameListener });
-        
+    startSupabaseListeners() {
+        console.log('Starting Supabase listeners...');
+
+        // Listen for game room changes
+        this.gameSubscription = window.supabase
+            .channel(`game-${this.roomId}`)
+            .on('postgres_changes', 
+                { 
+                    event: 'UPDATE', 
+                    schema: 'public', 
+                    table: 'game_rooms',
+                    filter: `room_id=eq.${this.roomId}`
+                }, 
+                (payload) => {
+                    console.log('Supabase game update:', payload);
+
+                    // Check for guest connection (host only)
+                    if (this.isHost && payload.new.guest_connected && !this.connected) {
+                        this.connected = true;
+                        console.log('Guest connected via Supabase!');
+                        if (this.onConnectionCallback) {
+                            this.onConnectionCallback();
+                        }
+                    }
+                })
+            .subscribe();
+
         // Listen for messages
-        this.messagesRef = window.firebaseDB.ref('messages/' + this.roomId);
-        const messagesListener = this.messagesRef.on('child_added', (snapshot) => {
-            const message = snapshot.val();
-            if (!message) return;
-            
-            console.log('Firebase message received:', message);
-            
-            // Only process messages for the other player
-            if ((this.isHost && message.from === 'guest') || 
-                (this.isGuest && message.from === 'host')) {
-                
-                if (this.onMessageCallback) {
-                    this.onMessageCallback(message.data);
-                }
-                
-                // Remove processed message
-                snapshot.ref.remove();
-            }
-        });
-        
-        this.listeners.push({ ref: this.messagesRef, listener: messagesListener });
+        this.messageSubscription = window.supabase
+            .channel(`messages-${this.roomId}`)
+            .on('postgres_changes', 
+                { 
+                    event: 'INSERT', 
+                    schema: 'public', 
+                    table: 'game_messages',
+                    filter: `room_id=eq.${this.roomId}`
+                }, 
+                (payload) => {
+                    console.log('Supabase message received:', payload);
+
+                    const message = payload.new;
+                    // Only process messages for the other player
+                    if ((this.isHost && message.from_player === 'guest') || 
+                        (this.isGuest && message.from_player === 'host')) {
+                        
+                        if (this.onMessageCallback) {
+                            this.onMessageCallback(JSON.parse(message.message_data));
+                        }
+
+                        // Remove processed message
+                        this.removeMessage(message.id);
+                    }
+                })
+            .subscribe();
+    }
+
+    async removeMessage(messageId) {
+        try {
+            await window.supabase
+                .from('game_messages')
+                .delete()
+                .eq('id', messageId);
+        } catch (error) {
+            console.error('Failed to remove message:', error);
+        }
     }
 
     async sendMessage(data) {
-        console.log('Sending Firebase message:', data);
-        
+        console.log('Sending Supabase message:', data);
+
         if (this.fallbackMode) {
             // Use localStorage fallback
             const targetKey = this.isHost ? `messages_to_guest_${this.roomId}` : `messages_to_host_${this.roomId}`;
             const messages = JSON.parse(localStorage.getItem(targetKey) || '[]');
             messages.push(data);
             localStorage.setItem(targetKey, JSON.stringify(messages));
-            
+
             // Also broadcast for cross-tab communication
             localStorage.setItem(`broadcast_${this.roomId}`, JSON.stringify(data));
             setTimeout(() => {
                 localStorage.removeItem(`broadcast_${this.roomId}`);
             }, 100);
-            
+
             return true;
         }
-        
-        if (!this.messagesRef) {
-            console.error('No Firebase messages reference');
-            return false;
-        }
-        
+
         try {
-            const message = {
-                from: this.isHost ? 'host' : 'guest',
-                data: data,
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            };
-            
-            await this.messagesRef.push(message);
-            
-            // Update last activity
-            if (this.gameRef) {
-                await this.gameRef.child('lastActivity').set(firebase.database.ServerValue.TIMESTAMP);
+            const { error } = await window.supabase
+                .from('game_messages')
+                .insert([
+                    {
+                        room_id: this.roomId,
+                        from_player: this.isHost ? 'host' : 'guest',
+                        message_data: JSON.stringify(data),
+                        created_at: new Date().toISOString()
+                    }
+                ]);
+
+            if (error) {
+                console.error('Failed to send Supabase message:', error);
+                return false;
             }
-            
+
+            // Update last activity
+            await window.supabase
+                .from('game_rooms')
+                .update({ last_activity: new Date().toISOString() })
+                .eq('room_id', this.roomId);
+
             return true;
-            
+
         } catch (error) {
-            console.error('Failed to send Firebase message:', error);
+            console.error('Failed to send Supabase message:', error);
             return false;
         }
     }
@@ -212,25 +247,27 @@ class MultiplayerGame {
     }
 
     disconnect() {
-        console.log('Disconnecting from Firebase...');
-        
-        // Remove all Firebase listeners
-        this.listeners.forEach(({ ref, listener }) => {
-            ref.off('value', listener);
-            ref.off('child_added', listener);
-        });
-        this.listeners = [];
-        
+        console.log('Disconnecting from Supabase...');
+
+        // Unsubscribe from Supabase channels
+        if (this.gameSubscription) {
+            window.supabase.removeChannel(this.gameSubscription);
+            this.gameSubscription = null;
+        }
+
+        if (this.messageSubscription) {
+            window.supabase.removeChannel(this.messageSubscription);
+            this.messageSubscription = null;
+        }
+
         // Clean up localStorage
         if (this.roomId) {
             localStorage.removeItem(`guest_${this.roomId}`);
             localStorage.removeItem(`messages_to_host_${this.roomId}`);
             localStorage.removeItem(`messages_to_guest_${this.roomId}`);
         }
-        
+
         this.connected = false;
-        this.gameRef = null;
-        this.messagesRef = null;
     }
 
     isConnected() {
@@ -240,14 +277,14 @@ class MultiplayerGame {
     // Fallback methods for localStorage (same as before)
     startFallbackHostPolling() {
         console.log('Host using localStorage fallback...');
-        
+
         // Update URL to include room info for sharing
         const newUrl = `${window.location.pathname}#room-${this.roomId}`;
         window.history.replaceState({}, '', newUrl);
-        
+
         // Set up cross-tab communication
         this.setupCrossTabCommunication();
-        
+
         this.pollInterval = setInterval(() => {
             // Check localStorage for guest connection 
             const guestData = localStorage.getItem(`guest_${this.roomId}`);
@@ -258,7 +295,7 @@ class MultiplayerGame {
                     this.onConnectionCallback();
                 }
             }
-            
+
             // Process messages
             const messages = JSON.parse(localStorage.getItem(`messages_to_host_${this.roomId}`) || '[]');
             if (messages.length > 0) {
@@ -274,16 +311,16 @@ class MultiplayerGame {
 
     startFallbackGuestPolling() {
         console.log('Guest using localStorage fallback...');
-        
+
         // Mark guest as connected in localStorage
         localStorage.setItem(`guest_${this.roomId}`, JSON.stringify({
             connected: true,
             timestamp: Date.now()
         }));
-        
+
         // Set up cross-tab communication
         this.setupCrossTabCommunication();
-        
+
         this.pollInterval = setInterval(() => {
             const messages = JSON.parse(localStorage.getItem(`messages_to_guest_${this.roomId}`) || '[]');
             if (messages.length > 0) {
@@ -317,13 +354,13 @@ window.multiplayer = new MultiplayerGame();
 // Debug helper - expose debugging info globally
 window.debugMultiplayer = () => {
     console.log('=== MULTIPLAYER DEBUG INFO ===');
-    console.log('Firebase available:', !!window.firebaseDB);
+    console.log('Supabase available:', !!window.supabase);
     console.log('isHost:', window.multiplayer.isHost);
     console.log('isGuest:', window.multiplayer.isGuest);
     console.log('roomId:', window.multiplayer.roomId);
     console.log('connected:', window.multiplayer.connected);
     console.log('fallbackMode:', window.multiplayer.fallbackMode);
-    console.log('gameRef:', window.multiplayer.gameRef);
+    console.log('gameSubscription:', window.multiplayer.gameSubscription);
     console.log('Current URL:', window.location.href);
     console.log('URL Hash:', window.location.hash);
 };
