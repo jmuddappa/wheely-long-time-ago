@@ -8,8 +8,9 @@ class MultiplayerGame {
         this.onDisconnectCallback = null;
         this.connected = false;
         this.pollInterval = null;
-        // Using jsonstorage.net - free JSON storage API
-        this.baseUrl = 'https://api.jsonstorage.net/v1/json';
+        // Using jsonbin.io - more reliable free API with better CORS support
+        this.baseUrl = 'https://api.jsonbin.io/v3/b';
+        this.apiKey = '$2a$10$N7Tb4RiKjV5r4rIWrPrEau0r8ZmAqO0yJWTy8f1kRrGZ8LfILk2gC'; // Public read-only key
         this.binId = null;
     }
 
@@ -34,42 +35,39 @@ class MultiplayerGame {
         };
         
         try {
-            // Create room in cloud storage - fix the 400 error by using correct format
-            console.log('Creating room on server...');
+            // Create room using jsonbin.io API
+            console.log('Creating room on jsonbin.io...');
             const response = await fetch(this.baseUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-Bin-Name': `wheely-game-${this.roomId}`,
+                    'X-Bin-Private': 'false'
                 },
                 body: JSON.stringify(roomData)
             });
             
             if (!response.ok) {
                 const errorText = await response.text();
-                console.log('API Response:', response.status, errorText);
+                console.log('jsonbin.io error:', response.status, errorText);
                 throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
             
             const result = await response.json();
-            console.log('API Success Response:', result);
+            console.log('jsonbin.io success:', result);
             
-            // Extract the bin ID from the response
-            if (result.uri) {
-                this.binId = result.uri.split('/').pop();
-            } else if (result.url) {
-                this.binId = result.url.split('/').pop();
-            } else if (result.id) {
-                this.binId = result.id;
+            // Extract bin ID from jsonbin.io response
+            if (result.metadata && result.metadata.id) {
+                this.binId = result.metadata.id;
+                console.log('Room created with bin ID:', this.binId);
+                
+                // Start polling for guest
+                this.startHostPolling();
+                
+                return this.roomId;
             } else {
-                throw new Error('No ID returned from server');
+                throw new Error('No bin ID returned from jsonbin.io');
             }
-            
-            console.log('Room created with bin ID:', this.binId);
-            
-            // Start polling for guest
-            this.startHostPolling();
-            
-            return this.roomId;
         } catch (error) {
             console.error('Failed to create online room:', error);
             
@@ -118,9 +116,11 @@ class MultiplayerGame {
 
     async joinExistingRoom() {
         try {
-            const response = await fetch(`${this.baseUrl}/${this.binId}`);
+            const response = await fetch(`${this.baseUrl}/${this.binId}/latest`);
             if (response.ok) {
-                const roomData = await response.json();
+                const result = await response.json();
+                const roomData = result.record || result;
+                
                 // Mark guest as connected
                 roomData.guest = 'connected';
                 roomData.guestName = 'Guest'; // Will be updated later
@@ -139,9 +139,10 @@ class MultiplayerGame {
         
         this.pollInterval = setInterval(async () => {
             try {
-                const response = await fetch(`${this.baseUrl}/${this.binId}`);
+                const response = await fetch(`${this.baseUrl}/${this.binId}/latest`);
                 if (response.ok) {
-                    const roomData = await response.json();
+                    const result = await response.json();
+                    const roomData = result.record || result;
                     
                     // Check if guest joined
                     if (roomData.guest && !this.connected) {
@@ -176,9 +177,10 @@ class MultiplayerGame {
         
         this.pollInterval = setInterval(async () => {
             try {
-                const response = await fetch(`${this.baseUrl}/${this.binId}`);
+                const response = await fetch(`${this.baseUrl}/${this.binId}/latest`);
                 if (response.ok) {
-                    const roomData = await response.json();
+                    const result = await response.json();
+                    const roomData = result.record || result;
                     
                     // Process host messages
                     if (roomData.hostMessages && roomData.hostMessages.length > 0) {
@@ -276,13 +278,17 @@ class MultiplayerGame {
         if (!this.binId || this.fallbackMode) return;
         
         try {
-            await fetch(`${this.baseUrl}/${this.binId}`, {
+            const response = await fetch(`${this.baseUrl}/${this.binId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(data)
             });
+            
+            if (!response.ok) {
+                console.error('Failed to update room:', response.status, await response.text());
+            }
         } catch (error) {
             console.error('Failed to update room:', error);
         }
@@ -313,13 +319,15 @@ class MultiplayerGame {
         }
         
         try {
-            // Get current room data
-            const response = await fetch(`${this.baseUrl}/${this.binId}`);
+            // Get current room data from jsonbin.io
+            const response = await fetch(`${this.baseUrl}/${this.binId}/latest`);
             if (!response.ok) {
                 throw new Error('Failed to fetch room data');
             }
             
-            const roomData = await response.json();
+            const result = await response.json();
+            // jsonbin.io wraps data in a 'record' field
+            const roomData = result.record || result;
             
             // Add message to appropriate queue
             if (this.isHost) {

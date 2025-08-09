@@ -16,6 +16,18 @@ let player2Score = 0;
 let usedInventions = new Set();
 let gameHistory = [];
 
+// Wheel invention year (reference point)
+const WHEEL_YEAR = -3500;
+
+// Conversion functions
+function yearToWheelRelative(absoluteYear) {
+    return absoluteYear - WHEEL_YEAR;
+}
+
+function wheelRelativeToYear(relativeYear) {
+    return WHEEL_YEAR + relativeYear;
+}
+
 // Utility functions
 function getRandomInvention() {
     // Get unused inventions
@@ -34,8 +46,10 @@ function getRandomInvention() {
     return invention;
 }
 
-function calculateScore(guess, correctYear) {
-    const difference = Math.abs(guess - correctYear);
+function calculateScore(guessRelative, correctYearAbsolute) {
+    // Convert correct year to relative to wheel
+    const correctRelative = yearToWheelRelative(correctYearAbsolute);
+    const difference = Math.abs(guessRelative - correctRelative);
     
     // Perfect guess: 1000 points
     if (difference === 0) return 1000;
@@ -230,7 +244,7 @@ function startMultiplayerRound() {
     // Update round counter
     const gameInstruction = document.querySelector('.game-instruction');
     if (gameInstruction) {
-        gameInstruction.textContent = `Round ${currentRound} of ${totalRounds}: When do you think this was invented? (Enter year, use negative numbers for BCE)`;
+        gameInstruction.textContent = `Round ${currentRound} of ${totalRounds}: How many years before (-) or after (+) the wheel was this invented?`;
     }
     
     if (isHost) {
@@ -431,12 +445,12 @@ function submitGuesses() {
 
 function calculateResults(guess1, guess2, p1Name, p2Name) {
     const correctYear = currentInvention.year;
-    const wheelYear = -3500;
+    const correctRelative = yearToWheelRelative(correctYear);
     
-    const diff1 = Math.abs(guess1 - correctYear);
-    const diff2 = Math.abs(guess2 - correctYear);
+    const diff1 = Math.abs(guess1 - correctRelative);
+    const diff2 = Math.abs(guess2 - correctRelative);
     
-    // Calculate scores
+    // Calculate scores using relative guesses and absolute correct year
     const score1 = calculateScore(guess1, correctYear);
     const score2 = calculateScore(guess2, correctYear);
     
@@ -463,7 +477,7 @@ function calculateResults(guess1, guess2, p1Name, p2Name) {
         </div>
         
         <div class="correct-answer">
-            <strong>${currentInvention.name}</strong> was invented in <strong>${formatYear(correctYear)}</strong>
+            <strong>${currentInvention.name}</strong> was invented <strong>${correctRelative > 0 ? '+' : ''}${correctRelative}</strong> years ${correctRelative > 0 ? 'after' : 'before'} the wheel (${formatYear(correctYear)})
         </div>
         
         <div class="fun-fact">
@@ -475,20 +489,20 @@ function calculateResults(guess1, guess2, p1Name, p2Name) {
         resultsHTML += `
             <div class="result-item winner">
                 🎉 <strong>${p1Name} wins this round!</strong><br>
-                Guessed: ${formatYear(guess1)} (${score1} points)
+                Guessed: ${guess1 > 0 ? '+' : ''}${guess1} years (${score1} points)
             </div>
             <div class="result-item">
-                ${p2Name}: ${formatYear(guess2)} (${score2} points)
+                ${p2Name}: ${guess2 > 0 ? '+' : ''}${guess2} years (${score2} points)
             </div>
         `;
     } else if (score2 > score1) {
         resultsHTML += `
             <div class="result-item winner">
                 🎉 <strong>${p2Name} wins this round!</strong><br>
-                Guessed: ${formatYear(guess2)} (${score2} points)
+                Guessed: ${guess2 > 0 ? '+' : ''}${guess2} years (${score2} points)
             </div>
             <div class="result-item">
-                ${p1Name}: ${formatYear(guess1)} (${score1} points)
+                ${p1Name}: ${guess1 > 0 ? '+' : ''}${guess1} years (${score1} points)
             </div>
         `;
     } else {
@@ -498,18 +512,17 @@ function calculateResults(guess1, guess2, p1Name, p2Name) {
                 Both players earned ${score1} points
             </div>
             <div class="result-item">
-                ${p1Name}: ${formatYear(guess1)} (${score1} points)
+                ${p1Name}: ${guess1 > 0 ? '+' : ''}${guess1} years (${score1} points)
             </div>
             <div class="result-item">
-                ${p2Name}: ${formatYear(guess2)} (${score2} points)
+                ${p2Name}: ${guess2 > 0 ? '+' : ''}${guess2} years (${score2} points)
             </div>
         `;
     }
     
-    const beforeWheel = correctYear < wheelYear;
     resultsHTML += `
         <div class="result-item wheel-comparison">
-            ${currentInvention.name} was invented <strong>${beforeWheel ? 'BEFORE' : 'AFTER'}</strong> the wheel! (${formatYear(wheelYear)})
+            The wheel was invented in ${formatYear(-3500)}
         </div>
     `;
     
@@ -661,8 +674,8 @@ function resetRound() {
     document.getElementById('guess2').disabled = false;
     document.getElementById('guess1').style.background = '';
     document.getElementById('guess2').style.background = '';
-    document.getElementById('guess1').placeholder = 'Year (e.g. -2000 for 2000 BCE)';
-    document.getElementById('guess2').placeholder = 'Year (e.g. -2000 for 2000 BCE)';
+    document.getElementById('guess1').placeholder = 'Years (e.g. -500 for 500 years before)';
+    document.getElementById('guess2').placeholder = 'Years (e.g. +1000 for 1000 years after)';
     document.getElementById('guess1').value = '';
     document.getElementById('guess2').value = '';
     
@@ -694,7 +707,7 @@ function startNextRound() {
         // Update round counter
         const gameInstruction = document.querySelector('.game-instruction');
         if (gameInstruction) {
-            gameInstruction.textContent = `Round ${currentRound} of ${totalRounds}: When do you think this was invented? (Enter year, use negative numbers for BCE)`;
+            gameInstruction.textContent = `Round ${currentRound} of ${totalRounds}: How many years before (-) or after (+) the wheel was this invented?`;
         }
         
         showSection('game-play');
