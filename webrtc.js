@@ -24,13 +24,13 @@ class MultiplayerGame {
         console.log('Creating PeerJS game room:', this.roomId);
         
         try {
-            // Create a PeerJS peer with our room ID
+            // Create a PeerJS peer with our room ID using a reliable free server
             this.peer = new Peer(this.roomId, {
-                host: 'peerjs-server.herokuapp.com',
+                host: '0.peerjs.com',
                 port: 443,
-                path: '/peerjs',
+                path: '/',
                 secure: true,
-                debug: 2
+                debug: 1
             });
 
             return new Promise((resolve, reject) => {
@@ -51,7 +51,7 @@ class MultiplayerGame {
                     resolve(this.roomId);
                 });
 
-                // Timeout after 10 seconds
+                // Timeout after 5 seconds for faster fallback
                 setTimeout(() => {
                     if (!this.peerId) {
                         console.log('PeerJS connection timeout, using fallback');
@@ -59,7 +59,7 @@ class MultiplayerGame {
                         this.startFallbackHostPolling();
                         resolve(this.roomId);
                     }
-                }, 10000);
+                }, 5000);
             });
 
         } catch (error) {
@@ -116,13 +116,13 @@ class MultiplayerGame {
         console.log('Joining PeerJS game room:', roomId);
 
         try {
-            // Create a guest peer
+            // Create a guest peer using the same reliable server
             this.peer = new Peer({
-                host: 'peerjs-server.herokuapp.com',
+                host: '0.peerjs.com',
                 port: 443,
-                path: '/peerjs',
+                path: '/',
                 secure: true,
-                debug: 2
+                debug: 1
             });
 
             return new Promise((resolve, reject) => {
@@ -160,7 +160,7 @@ class MultiplayerGame {
                     resolve();
                 });
 
-                // Timeout after 10 seconds
+                // Timeout after 5 seconds for faster fallback
                 setTimeout(() => {
                     if (!this.connected) {
                         console.log('PeerJS join timeout, using fallback');
@@ -168,7 +168,7 @@ class MultiplayerGame {
                         this.startFallbackGuestPolling();
                         resolve();
                     }
-                }, 10000);
+                }, 5000);
             });
 
         } catch (error) {
