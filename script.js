@@ -162,6 +162,7 @@ function handleMultiplayerMessage(data) {
             break;
             
         case 'gameStart':
+            console.log('Guest received gameStart with invention:', data.invention.name);
             currentInvention = data.invention;
             player1Name = data.player1Name;
             player2Name = data.player2Name;
@@ -196,6 +197,7 @@ function handleMultiplayerMessage(data) {
             break;
             
         case 'nextRound':
+            console.log('Guest received nextRound with invention:', data.invention?.name);
             // Sync round number and scores with host
             currentRound = data.round;
             if (data.scores) {
@@ -224,6 +226,12 @@ function handleMultiplayerMessage(data) {
 
 function startMultiplayerRound() {
     document.getElementById('invention-name').textContent = currentInvention.name;
+    
+    // Update round counter
+    const gameInstruction = document.querySelector('.game-instruction');
+    if (gameInstruction) {
+        gameInstruction.textContent = `Round ${currentRound} of ${totalRounds}: When do you think this was invented? (Enter year, use negative numbers for BCE)`;
+    }
     
     if (isHost) {
         document.getElementById('player1-label').textContent = player1Name + ':';
@@ -295,6 +303,7 @@ function startGame() {
         currentInvention = getRandomInvention();
         
         // Send game start to peer with complete state
+        console.log('Host sending gameStart with invention:', currentInvention.name);
         multiplayer.sendMessage({
             type: 'gameStart',
             invention: currentInvention,
@@ -569,6 +578,7 @@ function playAgain() {
             // Get new invention for next round
             currentInvention = getRandomInvention();
             
+            console.log('Host sending nextRound with invention:', currentInvention.name);
             multiplayer.sendMessage({ 
                 type: 'nextRound',
                 round: currentRound,
@@ -667,15 +677,23 @@ function startNextRound() {
         currentInvention = getRandomInvention();
     }
     
-    document.getElementById('invention-name').textContent = currentInvention.name;
-    
-    // Update round counter if there's a display for it
-    const gameInstruction = document.querySelector('.game-instruction');
-    if (gameInstruction) {
-        gameInstruction.textContent = `Round ${currentRound} of ${totalRounds}: When do you think this was invented? (Enter year, use negative numbers for BCE)`;
+    if (isMultiplayer) {
+        // Use multiplayer UI
+        startMultiplayerRound();
+    } else {
+        // Use local game UI
+        document.getElementById('invention-name').textContent = currentInvention.name;
+        document.getElementById('player1-label').textContent = player1Name + ':';
+        document.getElementById('player2-label').textContent = player2Name + ':';
+        
+        // Update round counter
+        const gameInstruction = document.querySelector('.game-instruction');
+        if (gameInstruction) {
+            gameInstruction.textContent = `Round ${currentRound} of ${totalRounds}: When do you think this was invented? (Enter year, use negative numbers for BCE)`;
+        }
+        
+        showSection('game-play');
     }
-    
-    showSection('game-play');
 }
 
 
