@@ -606,6 +606,161 @@ input:focus-visible {
     outline-offset: 2px;
 }
 
+/* Multi-round game styles */
+.round-header {
+    text-align: center;
+    margin-bottom: 24px;
+    padding: 16px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: var(--radius-md);
+}
+
+.round-header h3 {
+    margin: 0 0 8px 0;
+    font-size: 1.2rem;
+    font-family: 'NYTimes', Georgia, serif;
+}
+
+.score-display {
+    display: flex;
+    justify-content: space-around;
+    gap: 20px;
+}
+
+.score-item {
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.fun-fact {
+    background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+    padding: 16px;
+    border-radius: var(--radius-sm);
+    margin: 16px 0;
+    border-left: 4px solid #fdcb6e;
+    font-style: italic;
+    animation: slideInLeft 0.5s ease-out;
+}
+
+.wheel-comparison {
+    background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 100%);
+    color: white;
+    font-weight: 600;
+    text-align: center;
+    border-left: none !important;
+}
+
+.final-results {
+    text-align: center;
+    animation: fadeInScale 0.6s var(--bounce);
+}
+
+.final-results h2 {
+    font-size: 2rem;
+    margin-bottom: 24px;
+    color: var(--primary-color);
+}
+
+.final-scores {
+    display: flex;
+    justify-content: space-around;
+    margin: 24px 0;
+    gap: 16px;
+}
+
+.final-score {
+    flex: 1;
+    padding: 20px;
+    background: var(--surface-variant);
+    border-radius: var(--radius-md);
+    border: 2px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: var(--transition);
+}
+
+.final-score.winner {
+    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    border-color: var(--success-color);
+    transform: scale(1.05);
+    box-shadow: var(--shadow-medium);
+}
+
+.final-score .player-name {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: var(--primary-color);
+}
+
+.final-score .score {
+    font-family: 'NYTimes', Georgia, serif;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.final-winner {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 24px 0;
+    padding: 16px;
+    background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+    border-radius: var(--radius-md);
+    border-left: 4px solid var(--warning-color);
+}
+
+.game-summary {
+    margin-top: 32px;
+    text-align: left;
+}
+
+.game-summary h3 {
+    text-align: center;
+    margin-bottom: 16px;
+    font-family: 'NYTimes', Georgia, serif;
+}
+
+.round-summary {
+    margin: 8px 0;
+    padding: 12px;
+    background: var(--surface-variant);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--accent-color);
+}
+
+.round-summary small {
+    color: var(--secondary-color);
+    font-size: 0.85rem;
+}
+
+/* Mobile adjustments for multi-round */
+@media (max-width: 480px) {
+    .final-scores {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .final-score {
+        padding: 16px;
+    }
+    
+    .score-display {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .round-header {
+        padding: 12px;
+    }
+    
+    .fun-fact {
+        padding: 12px;
+        font-size: 0.9rem;
+    }
+}
+
 /* High contrast mode support */
 @media (prefers-contrast: high) {
     :root {
