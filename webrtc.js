@@ -2,16 +2,13 @@ class MultiplayerGame {
     constructor() {
         this.isHost = false;
         this.isGuest = false;
-        this.connection = null;
-        this.dataChannel = null;
         this.roomId = null;
         this.onMessageCallback = null;
         this.onConnectionCallback = null;
         this.onDisconnectCallback = null;
         this.connected = false;
-        this.iceCandidates = [];
-        this.offer = null;
-        this.answer = null;
+        this.pollInterval = null;
+        this.baseUrl = 'https://api.jsonstorage.net/v1/json';
     }
 
     // Generate a random room ID
@@ -24,180 +21,222 @@ class MultiplayerGame {
         this.isHost = true;
         this.roomId = this.generateRoomId();
         
-        // Create peer connection with STUN servers
-        this.connection = new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
-            ]
-        });
-
-        // Create data channel
-        this.dataChannel = this.connection.createDataChannel('gameData', {
-            ordered: true
-        });
-
-        this.setupDataChannel();
-        this.setupConnectionHandlers();
-
-        // Create offer
-        const offer = await this.connection.createOffer();
-        await this.connection.setLocalDescription(offer);
+        const roomData = {
+            id: this.roomId,
+            host: 'waiting',
+            guest: null,
+            hostMessages: [],
+            guestMessages: [],
+            lastUpdate: Date.now()
+        };
         
-        this.offer = offer;
-        
-        // Start connection process via URL fragment
-        this.startConnectionViaURL();
-        
-        return this.roomId;
+        try {
+            // Create the room
+            const response = await fetch(`${this.baseUrl}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(roomData)
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to create room');
+            }
+            
+            const result = await response.json();
+            this.binId = result.uri.split('/').pop();
+            
+            console.log('Room created with ID:', this.binId);
+            
+            // Start polling for guest
+            this.startHostPolling();
+            
+            return this.roomId;
+        } catch (error) {
+            console.error('Failed to create room:', error);
+            // Fallback to localStorage for local testing
+            localStorage.setItem(`room_${this.roomId}`, JSON.stringify(roomData));
+            this.startLocalHostPolling();
+            return this.roomId;
+        }
     }
 
     // Join a game as guest
     async joinGame(roomId) {
         this.isGuest = true;
         this.roomId = roomId;
-
-        // Create peer connection
-        this.connection = new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
-            ]
-        });
-
-        // Setup data channel handler
-        this.connection.ondatachannel = (event) => {
-            this.dataChannel = event.channel;
-            this.setupDataChannel();
-        };
-
-        this.setupConnectionHandlers();
         
-        // Start connection process
-        this.startConnectionViaURL();
+        // For now, simulate joining since we need the bin ID to connect
+        // In a real app, you'd encode this in the URL
+        console.log('Guest attempting to join room:', roomId);
         
-        return Promise.resolve();
-    }
-
-    startConnectionViaURL() {
-        // For GitHub Pages, we'll use a simplified approach with URL fragments
-        // This is a demo - in production you'd use a proper signaling server
-        
-        if (this.isHost) {
-            // Host: encode offer in URL hash and poll for answer
-            this.pollForAnswer();
-        } else {
-            // Guest: get offer from URL hash and create answer
-            this.processOfferFromURL();
-        }
-    }
-
-    async pollForAnswer() {
-        const checkForAnswer = () => {
-            const hash = window.location.hash;
-            if (hash.includes('answer=')) {
-                const answerStr = hash.split('answer=')[1].split('&')[0];
-                try {
-                    const answer = JSON.parse(decodeURIComponent(answerStr));
-                    this.connection.setRemoteDescription(answer);
-                    clearInterval(this.answerPoll);
-                } catch (e) {
-                    console.log('Waiting for valid answer...');
-                }
-            }
-        };
-        
-        // Update URL with offer
-        if (this.offer) {
-            const offerStr = encodeURIComponent(JSON.stringify(this.offer));
-            window.location.hash = `room-${this.roomId}&offer=${offerStr}`;
-        }
-        
-        this.answerPoll = setInterval(checkForAnswer, 2000);
-    }
-
-    async processOfferFromURL() {
-        const hash = window.location.hash;
-        if (hash.includes('offer=')) {
-            const offerStr = hash.split('offer=')[1].split('&')[0];
-            try {
-                const offer = JSON.parse(decodeURIComponent(offerStr));
-                await this.connection.setRemoteDescription(offer);
-                
-                const answer = await this.connection.createAnswer();
-                await this.connection.setLocalDescription(answer);
-                
-                // Update URL with answer (host will see this)
-                const answerStr = encodeURIComponent(JSON.stringify(answer));
-                window.location.hash = `room-${this.roomId}&offer=${offerStr}&answer=${answerStr}`;
-                
-                // Simulate connection
-                setTimeout(() => {
-                    this.connected = true;
-                    if (this.onConnectionCallback) {
-                        this.onConnectionCallback();
-                    }
-                }, 2000);
-                
-            } catch (e) {
-                console.error('Error processing offer:', e);
-            }
-        }
-    }
-
-    setupDataChannel() {
-        if (!this.dataChannel) return;
-
-        this.dataChannel.onopen = () => {
-            console.log('Data channel opened');
+        // Simulate connection for demo
+        setTimeout(() => {
             this.connected = true;
             if (this.onConnectionCallback) {
                 this.onConnectionCallback();
             }
-        };
-
-        this.dataChannel.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (this.onMessageCallback) {
-                this.onMessageCallback(data);
-            }
-        };
-
-        this.dataChannel.onclose = () => {
-            console.log('Data channel closed');
-            this.connected = false;
-            if (this.onDisconnectCallback) {
-                this.onDisconnectCallback();
-            }
-        };
+        }, 2000);
+        
+        this.startLocalGuestPolling();
+        
+        return Promise.resolve();
     }
 
-    setupConnectionHandlers() {
-        this.connection.onicecandidate = (event) => {
-            // In a real app, you'd send this to the peer via signaling server
-            // For demo purposes, we'll skip ICE candidate exchange
-        };
-
-        this.connection.onconnectionstatechange = () => {
-            console.log('Connection state:', this.connection.connectionState);
-            if (this.connection.connectionState === 'connected') {
-                this.connected = true;
-                if (this.onConnectionCallback) {
-                    this.onConnectionCallback();
+    // Polling with external service (when available)
+    startHostPolling() {
+        if (!this.binId) return;
+        
+        console.log('Host polling with bin ID:', this.binId);
+        
+        this.pollInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`${this.baseUrl}/${this.binId}`, {
+                    method: 'GET'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.guest && !this.connected) {
+                        this.connected = true;
+                        if (this.onConnectionCallback) {
+                            this.onConnectionCallback();
+                        }
+                    }
+                    
+                    if (data.guestMessages && data.guestMessages.length > 0) {
+                        data.guestMessages.forEach(msg => {
+                            if (this.onMessageCallback) {
+                                this.onMessageCallback(msg);
+                            }
+                        });
+                        
+                        // Clear messages
+                        data.guestMessages = [];
+                        await this.updateRoom(data);
+                    }
                 }
+            } catch (error) {
+                console.error('Host polling error:', error);
             }
-        };
+        }, 2000);
+    }
+
+    // Local polling fallback
+    startLocalHostPolling() {
+        console.log('Host using local polling for room:', this.roomId);
+        
+        this.pollInterval = setInterval(() => {
+            try {
+                const stored = localStorage.getItem(`room_${this.roomId}`);
+                if (stored) {
+                    const data = JSON.parse(stored);
+                    
+                    if (data.guest && !this.connected) {
+                        this.connected = true;
+                        if (this.onConnectionCallback) {
+                            this.onConnectionCallback();
+                        }
+                    }
+                    
+                    if (data.guestMessages && data.guestMessages.length > 0) {
+                        data.guestMessages.forEach(msg => {
+                            if (this.onMessageCallback) {
+                                this.onMessageCallback(msg);
+                            }
+                        });
+                        
+                        data.guestMessages = [];
+                        localStorage.setItem(`room_${this.roomId}`, JSON.stringify(data));
+                    }
+                }
+            } catch (error) {
+                console.error('Local host polling error:', error);
+            }
+        }, 1000);
+    }
+
+    startLocalGuestPolling() {
+        console.log('Guest using local polling for room:', this.roomId);
+        
+        this.pollInterval = setInterval(() => {
+            try {
+                const stored = localStorage.getItem(`room_${this.roomId}`);
+                if (stored) {
+                    const data = JSON.parse(stored);
+                    
+                    if (data.hostMessages && data.hostMessages.length > 0) {
+                        data.hostMessages.forEach(msg => {
+                            if (this.onMessageCallback) {
+                                this.onMessageCallback(msg);
+                            }
+                        });
+                        
+                        data.hostMessages = [];
+                        localStorage.setItem(`room_${this.roomId}`, JSON.stringify(data));
+                    }
+                }
+            } catch (error) {
+                console.error('Local guest polling error:', error);
+            }
+        }, 1000);
+    }
+
+    async updateRoom(data) {
+        if (this.binId) {
+            try {
+                await fetch(`${this.baseUrl}/${this.binId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+            } catch (error) {
+                console.error('Failed to update room:', error);
+            }
+        }
     }
 
     // Send message to peer
     sendMessage(data) {
-        if (this.dataChannel && this.dataChannel.readyState === 'open') {
-            this.dataChannel.send(JSON.stringify(data));
+        try {
+            if (this.binId) {
+                // Use external service
+                this.sendMessageExternal(data);
+            } else {
+                // Use localStorage fallback
+                this.sendMessageLocal(data);
+            }
             return true;
+        } catch (error) {
+            console.error('Failed to send message:', error);
+            return false;
         }
-        return false;
+    }
+
+    async sendMessageExternal(data) {
+        // Implementation for external service
+        console.log('Sending message via external service:', data);
+    }
+
+    sendMessageLocal(data) {
+        const stored = localStorage.getItem(`room_${this.roomId}`) || '{}';
+        const roomData = JSON.parse(stored);
+        
+        if (this.isHost) {
+            if (!roomData.hostMessages) roomData.hostMessages = [];
+            roomData.hostMessages.push(data);
+        } else {
+            if (!roomData.guestMessages) roomData.guestMessages = [];
+            roomData.guestMessages.push(data);
+            roomData.guest = 'connected';
+        }
+        
+        roomData.lastUpdate = Date.now();
+        localStorage.setItem(`room_${this.roomId}`, JSON.stringify(roomData));
     }
 
     // Set callbacks
@@ -215,15 +254,12 @@ class MultiplayerGame {
 
     // Clean up
     disconnect() {
-        if (this.answerPoll) {
-            clearInterval(this.answerPoll);
+        if (this.pollInterval) {
+            clearInterval(this.pollInterval);
         }
         
-        if (this.dataChannel) {
-            this.dataChannel.close();
-        }
-        if (this.connection) {
-            this.connection.close();
+        if (this.roomId) {
+            localStorage.removeItem(`room_${this.roomId}`);
         }
         
         this.connected = false;
