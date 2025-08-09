@@ -8,7 +8,7 @@
 </head>
 <body>
     <div class="container">
-        <div class="version">v6.1</div>
+        <div class="version">v7.0</div>
         <h1>Was It Invented Before the Wheel?</h1>
         <p class="subtitle">The wheel was invented around 3500 BCE. Can you guess how many years before or after the wheel other inventions were created?</p>
         
@@ -85,17 +85,10 @@
         </div>
     </div>
 
-    <!-- Supabase SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- PeerJS SDK -->
+    <script src="https://unpkg.com/peerjs@1.5.0/dist/peerjs.min.js"></script>
     <script>
-        // Supabase config - using a public demo database
-        const supabaseUrl = 'https://wkhuhmkrppqvjqxamykw.supabase.co';
-        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndraHVobWtycHBxdmpxeGFteWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE2OTcxNjczMzYsImV4cCI6MjAxMjc0MzMzNn0.bUKrgrH1fTojuGb1WgB5vLXp8Oq4x6auvRO4kAEuAWs';
-        
-        // Initialize Supabase
-        window.supabase = supabase.createClient(supabaseUrl, supabaseKey);
-        
-        console.log('Supabase initialized successfully');
+        console.log('PeerJS loaded successfully');
     </script>
     
     <script src="inventions.js"></script>

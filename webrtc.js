@@ -3,189 +3,205 @@ class MultiplayerGame {
         this.isHost = false;
         this.isGuest = false;
         this.roomId = null;
+        this.peerId = null;
+        this.peer = null;
+        this.connection = null;
         this.onMessageCallback = null;
         this.onConnectionCallback = null;
         this.onDisconnectCallback = null;
         this.connected = false;
-        this.gameSubscription = null;
-        this.messageSubscription = null;
         this.fallbackMode = false;
     }
 
     generateRoomId() {
-        return Math.random().toString(36).substring(2, 8).toUpperCase();
+        return 'wheely-' + Math.random().toString(36).substring(2, 8).toLowerCase();
     }
 
     async createGame() {
         this.isHost = true;
         this.roomId = this.generateRoomId();
         
-        console.log('Creating Supabase game room:', this.roomId);
+        console.log('Creating PeerJS game room:', this.roomId);
         
         try {
-            // Create room in Supabase
-            const { data, error } = await window.supabase
-                .from('game_rooms')
-                .insert([
-                    {
-                        room_id: this.roomId,
-                        host_connected: true,
-                        guest_connected: false,
-                        host_name: '',
-                        guest_name: '',
-                        game_state: 'waiting',
-                        created_at: new Date().toISOString(),
-                        last_activity: new Date().toISOString()
+            // Create a PeerJS peer with our room ID
+            this.peer = new Peer(this.roomId, {
+                host: 'peerjs-server.herokuapp.com',
+                port: 443,
+                path: '/peerjs',
+                secure: true,
+                debug: 2
+            });
+
+            return new Promise((resolve, reject) => {
+                this.peer.on('open', (id) => {
+                    console.log('PeerJS host peer opened with ID:', id);
+                    this.peerId = id;
+                    this.setupHostListeners();
+                    resolve(this.roomId);
+                });
+
+                this.peer.on('error', (err) => {
+                    console.error('PeerJS peer error:', err);
+                    
+                    // Fallback to localStorage
+                    console.log('Using localStorage fallback');
+                    this.fallbackMode = true;
+                    this.startFallbackHostPolling();
+                    resolve(this.roomId);
+                });
+
+                // Timeout after 10 seconds
+                setTimeout(() => {
+                    if (!this.peerId) {
+                        console.log('PeerJS connection timeout, using fallback');
+                        this.fallbackMode = true;
+                        this.startFallbackHostPolling();
+                        resolve(this.roomId);
                     }
-                ])
-                .select();
-
-            if (error) {
-                console.error('Supabase create error:', error);
-                throw error;
-            }
-
-            console.log('Supabase room created successfully:', data);
-
-            // Start listening for changes
-            this.startSupabaseListeners();
-
-            return this.roomId;
+                }, 10000);
+            });
 
         } catch (error) {
-            console.error('Failed to create Supabase room:', error);
-
+            console.error('Failed to create PeerJS room:', error);
+            
             // Fallback to localStorage
             console.log('Using localStorage fallback');
             this.fallbackMode = true;
             this.startFallbackHostPolling();
-
+            
             return this.roomId;
         }
+    }
+
+    setupHostListeners() {
+        // Listen for incoming connections
+        this.peer.on('connection', (conn) => {
+            console.log('Guest connected via PeerJS!');
+            this.connection = conn;
+            this.connected = true;
+
+            // Set up connection event handlers
+            conn.on('data', (data) => {
+                console.log('PeerJS message received:', data);
+                if (this.onMessageCallback) {
+                    this.onMessageCallback(data);
+                }
+            });
+
+            conn.on('close', () => {
+                console.log('Guest disconnected');
+                this.connected = false;
+                if (this.onDisconnectCallback) {
+                    this.onDisconnectCallback();
+                }
+            });
+
+            // Notify that connection is established
+            if (this.onConnectionCallback) {
+                this.onConnectionCallback();
+            }
+        });
+
+        this.peer.on('disconnected', () => {
+            console.log('PeerJS peer disconnected');
+            this.connected = false;
+        });
     }
 
     async joinGame(roomId) {
         this.isGuest = true;
         this.roomId = roomId;
 
-        console.log('Joining Supabase game room:', roomId);
+        console.log('Joining PeerJS game room:', roomId);
 
         try {
-            // Check if room exists and join it
-            const { data, error } = await window.supabase
-                .from('game_rooms')
-                .update({ 
-                    guest_connected: true,
-                    last_activity: new Date().toISOString()
-                })
-                .eq('room_id', roomId)
-                .select();
+            // Create a guest peer
+            this.peer = new Peer({
+                host: 'peerjs-server.herokuapp.com',
+                port: 443,
+                path: '/peerjs',
+                secure: true,
+                debug: 2
+            });
 
-            if (error) {
-                console.error('Supabase join error:', error);
-                throw error;
-            }
+            return new Promise((resolve, reject) => {
+                this.peer.on('open', (id) => {
+                    console.log('PeerJS guest peer opened with ID:', id);
+                    this.peerId = id;
+                    
+                    // Connect to the host
+                    this.connection = this.peer.connect(roomId);
+                    
+                    this.connection.on('open', () => {
+                        console.log('Connected to host via PeerJS!');
+                        this.connected = true;
+                        this.setupGuestListeners();
+                        
+                        if (this.onConnectionCallback) {
+                            this.onConnectionCallback();
+                        }
+                        
+                        resolve();
+                    });
 
-            if (!data || data.length === 0) {
-                throw new Error('Room not found');
-            }
+                    this.connection.on('error', (err) => {
+                        console.error('PeerJS connection error:', err);
+                        this.fallbackMode = true;
+                        this.startFallbackGuestPolling();
+                        resolve();
+                    });
+                });
 
-            console.log('Successfully joined room:', data);
+                this.peer.on('error', (err) => {
+                    console.error('PeerJS guest peer error:', err);
+                    this.fallbackMode = true;
+                    this.startFallbackGuestPolling();
+                    resolve();
+                });
 
-            // Start listening for changes
-            this.startSupabaseListeners();
-
-            // Simulate connection for immediate feedback
-            setTimeout(() => {
-                this.connected = true;
-                if (this.onConnectionCallback) {
-                    this.onConnectionCallback();
-                }
-            }, 1000);
-
-            return Promise.resolve();
+                // Timeout after 10 seconds
+                setTimeout(() => {
+                    if (!this.connected) {
+                        console.log('PeerJS join timeout, using fallback');
+                        this.fallbackMode = true;
+                        this.startFallbackGuestPolling();
+                        resolve();
+                    }
+                }, 10000);
+            });
 
         } catch (error) {
-            console.error('Failed to join Supabase room:', error);
-
+            console.error('Failed to join PeerJS room:', error);
+            
             // Fallback to localStorage
             console.log('Using localStorage fallback');
             this.fallbackMode = true;
             this.startFallbackGuestPolling();
-
+            
             return Promise.resolve();
         }
     }
 
-    startSupabaseListeners() {
-        console.log('Starting Supabase listeners...');
+    setupGuestListeners() {
+        this.connection.on('data', (data) => {
+            console.log('PeerJS message received:', data);
+            if (this.onMessageCallback) {
+                this.onMessageCallback(data);
+            }
+        });
 
-        // Listen for game room changes
-        this.gameSubscription = window.supabase
-            .channel(`game-${this.roomId}`)
-            .on('postgres_changes', 
-                { 
-                    event: 'UPDATE', 
-                    schema: 'public', 
-                    table: 'game_rooms',
-                    filter: `room_id=eq.${this.roomId}`
-                }, 
-                (payload) => {
-                    console.log('Supabase game update:', payload);
-
-                    // Check for guest connection (host only)
-                    if (this.isHost && payload.new.guest_connected && !this.connected) {
-                        this.connected = true;
-                        console.log('Guest connected via Supabase!');
-                        if (this.onConnectionCallback) {
-                            this.onConnectionCallback();
-                        }
-                    }
-                })
-            .subscribe();
-
-        // Listen for messages
-        this.messageSubscription = window.supabase
-            .channel(`messages-${this.roomId}`)
-            .on('postgres_changes', 
-                { 
-                    event: 'INSERT', 
-                    schema: 'public', 
-                    table: 'game_messages',
-                    filter: `room_id=eq.${this.roomId}`
-                }, 
-                (payload) => {
-                    console.log('Supabase message received:', payload);
-
-                    const message = payload.new;
-                    // Only process messages for the other player
-                    if ((this.isHost && message.from_player === 'guest') || 
-                        (this.isGuest && message.from_player === 'host')) {
-                        
-                        if (this.onMessageCallback) {
-                            this.onMessageCallback(JSON.parse(message.message_data));
-                        }
-
-                        // Remove processed message
-                        this.removeMessage(message.id);
-                    }
-                })
-            .subscribe();
-    }
-
-    async removeMessage(messageId) {
-        try {
-            await window.supabase
-                .from('game_messages')
-                .delete()
-                .eq('id', messageId);
-        } catch (error) {
-            console.error('Failed to remove message:', error);
-        }
+        this.connection.on('close', () => {
+            console.log('Host disconnected');
+            this.connected = false;
+            if (this.onDisconnectCallback) {
+                this.onDisconnectCallback();
+            }
+        });
     }
 
     async sendMessage(data) {
-        console.log('Sending Supabase message:', data);
+        console.log('Sending message:', data);
 
         if (this.fallbackMode) {
             // Use localStorage fallback
@@ -203,33 +219,16 @@ class MultiplayerGame {
             return true;
         }
 
+        if (!this.connection || !this.connected) {
+            console.error('No PeerJS connection available');
+            return false;
+        }
+
         try {
-            const { error } = await window.supabase
-                .from('game_messages')
-                .insert([
-                    {
-                        room_id: this.roomId,
-                        from_player: this.isHost ? 'host' : 'guest',
-                        message_data: JSON.stringify(data),
-                        created_at: new Date().toISOString()
-                    }
-                ]);
-
-            if (error) {
-                console.error('Failed to send Supabase message:', error);
-                return false;
-            }
-
-            // Update last activity
-            await window.supabase
-                .from('game_rooms')
-                .update({ last_activity: new Date().toISOString() })
-                .eq('room_id', this.roomId);
-
+            this.connection.send(data);
             return true;
-
         } catch (error) {
-            console.error('Failed to send Supabase message:', error);
+            console.error('Failed to send PeerJS message:', error);
             return false;
         }
     }
@@ -247,17 +246,16 @@ class MultiplayerGame {
     }
 
     disconnect() {
-        console.log('Disconnecting from Supabase...');
+        console.log('Disconnecting from PeerJS...');
 
-        // Unsubscribe from Supabase channels
-        if (this.gameSubscription) {
-            window.supabase.removeChannel(this.gameSubscription);
-            this.gameSubscription = null;
+        if (this.connection) {
+            this.connection.close();
+            this.connection = null;
         }
 
-        if (this.messageSubscription) {
-            window.supabase.removeChannel(this.messageSubscription);
-            this.messageSubscription = null;
+        if (this.peer) {
+            this.peer.destroy();
+            this.peer = null;
         }
 
         // Clean up localStorage
@@ -268,6 +266,7 @@ class MultiplayerGame {
         }
 
         this.connected = false;
+        this.peerId = null;
     }
 
     isConnected() {
@@ -354,13 +353,15 @@ window.multiplayer = new MultiplayerGame();
 // Debug helper - expose debugging info globally
 window.debugMultiplayer = () => {
     console.log('=== MULTIPLAYER DEBUG INFO ===');
-    console.log('Supabase available:', !!window.supabase);
+    console.log('PeerJS available:', !!window.Peer);
     console.log('isHost:', window.multiplayer.isHost);
     console.log('isGuest:', window.multiplayer.isGuest);
     console.log('roomId:', window.multiplayer.roomId);
+    console.log('peerId:', window.multiplayer.peerId);
     console.log('connected:', window.multiplayer.connected);
     console.log('fallbackMode:', window.multiplayer.fallbackMode);
-    console.log('gameSubscription:', window.multiplayer.gameSubscription);
+    console.log('peer:', window.multiplayer.peer);
+    console.log('connection:', window.multiplayer.connection);
     console.log('Current URL:', window.location.href);
     console.log('URL Hash:', window.location.hash);
 };
