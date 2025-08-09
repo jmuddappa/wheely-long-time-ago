@@ -8,7 +8,7 @@
 </head>
 <body>
     <div class="container">
-        <div class="version">v5.2</div>
+        <div class="version">v6.0</div>
         <h1>Was It Invented Before the Wheel?</h1>
         <p class="subtitle">The wheel was invented around 3500 BCE. Can you guess how many years before or after the wheel other inventions were created?</p>
         
@@ -85,6 +85,25 @@
         </div>
     </div>
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    <script>
+        // Firebase config - using a demo database that allows public read/write
+        const firebaseConfig = {
+            apiKey: "AIzaSyBxmMYkUOQTKfQkBB0XBcHiZcmVJN-X4aM",
+            authDomain: "fir-demos-project-default-rtdb.firebaseio.com",
+            databaseURL: "https://fir-demos-project-default-rtdb.firebaseio.com",
+            projectId: "fir-demos-project"
+        };
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        window.firebaseDB = firebase.database();
+        
+        console.log('Firebase initialized successfully');
+    </script>
+    
     <script src="inventions.js"></script>
     <script src="webrtc.js"></script>
     <script src="script.js"></script>

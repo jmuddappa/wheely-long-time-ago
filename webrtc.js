@@ -7,11 +7,9 @@ class MultiplayerGame {
         this.onConnectionCallback = null;
         this.onDisconnectCallback = null;
         this.connected = false;
-        this.pollInterval = null;
-        // Using jsonbin.io - more reliable free API with better CORS support
-        this.baseUrl = 'https://api.jsonbin.io/v3/b';
-        this.apiKey = '$2a$10$N7Tb4RiKjV5r4rIWrPrEau0r8ZmAqO0yJWTy8f1kRrGZ8LfILk2gC'; // Public read-only key
-        this.binId = null;
+        this.gameRef = null;
+        this.messagesRef = null;
+        this.listeners = [];
     }
 
     generateRoomId() {
@@ -22,57 +20,37 @@ class MultiplayerGame {
         this.isHost = true;
         this.roomId = this.generateRoomId();
         
-        const roomData = {
-            roomId: this.roomId,
-            host: 'waiting',
-            guest: null,
-            hostMessages: [],
-            guestMessages: [],
-            hostName: '',
-            guestName: '',
-            gameState: 'waiting',
-            created: Date.now()
-        };
+        console.log('Creating Firebase game room:', this.roomId);
         
         try {
-            // Create room using jsonbin.io API
-            console.log('Creating room on jsonbin.io...');
-            const response = await fetch(this.baseUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Bin-Name': `wheely-game-${this.roomId}`,
-                    'X-Bin-Private': 'false'
-                },
-                body: JSON.stringify(roomData)
-            });
+            // Reference to this game in Firebase
+            this.gameRef = window.firebaseDB.ref('games/' + this.roomId);
             
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.log('jsonbin.io error:', response.status, errorText);
-                throw new Error(`HTTP ${response.status}: ${errorText}`);
-            }
+            const roomData = {
+                roomId: this.roomId,
+                host: 'waiting',
+                guest: null,
+                hostName: '',
+                guestName: '',
+                gameState: 'waiting',
+                created: firebase.database.ServerValue.TIMESTAMP,
+                lastActivity: firebase.database.ServerValue.TIMESTAMP
+            };
             
-            const result = await response.json();
-            console.log('jsonbin.io success:', result);
+            // Create the room
+            await this.gameRef.set(roomData);
+            console.log('Firebase room created successfully');
             
-            // Extract bin ID from jsonbin.io response
-            if (result.metadata && result.metadata.id) {
-                this.binId = result.metadata.id;
-                console.log('Room created with bin ID:', this.binId);
-                
-                // Start polling for guest
-                this.startHostPolling();
-                
-                return this.roomId;
-            } else {
-                throw new Error('No bin ID returned from jsonbin.io');
-            }
+            // Start listening for changes
+            this.startFirebaseListeners();
+            
+            return this.roomId;
+            
         } catch (error) {
-            console.error('Failed to create online room:', error);
+            console.error('Failed to create Firebase room:', error);
             
-            // Fallback: Use localStorage-based connection
-            console.log('Using localStorage fallback connection');
+            // Fallback to localStorage
+            console.log('Using localStorage fallback');
             this.fallbackMode = true;
             this.startFallbackHostPolling();
             
@@ -84,126 +62,184 @@ class MultiplayerGame {
         this.isGuest = true;
         this.roomId = roomId;
         
+        console.log('Joining Firebase game room:', roomId);
+        
         try {
-            // Try to extract bin ID from URL hash if it exists
-            const hash = window.location.hash;
-            if (hash.includes('bin=')) {
-                this.binId = hash.split('bin=')[1].split('&')[0];
-                console.log('Found bin ID in URL:', this.binId);
-                
-                await this.joinExistingRoom();
-                this.startGuestPolling();
-            } else {
-                throw new Error('No bin ID found in URL');
+            // Reference to this game in Firebase
+            this.gameRef = window.firebaseDB.ref('games/' + roomId);
+            
+            // Check if room exists
+            const snapshot = await this.gameRef.once('value');
+            if (!snapshot.exists()) {
+                throw new Error('Room does not exist');
             }
             
+            console.log('Room found, joining...');
+            
+            // Mark guest as connected
+            await this.gameRef.child('guest').set('connected');
+            await this.gameRef.child('lastActivity').set(firebase.database.ServerValue.TIMESTAMP);
+            
+            // Start listening for changes
+            this.startFirebaseListeners();
+            
+            // Simulate connection for immediate feedback
+            setTimeout(() => {
+                this.connected = true;
+                if (this.onConnectionCallback) {
+                    this.onConnectionCallback();
+                }
+            }, 1000);
+            
+            return Promise.resolve();
+            
         } catch (error) {
-            console.log('Using fallback connection method:', error.message);
+            console.error('Failed to join Firebase room:', error);
+            
+            // Fallback to localStorage
+            console.log('Using localStorage fallback');
             this.fallbackMode = true;
             this.startFallbackGuestPolling();
+            
+            return Promise.resolve();
         }
-        
-        // Provide connection feedback
-        setTimeout(() => {
-            this.connected = true;
-            if (this.onConnectionCallback) {
-                this.onConnectionCallback();
-            }
-        }, 2000);
-        
-        return Promise.resolve();
     }
 
-    async joinExistingRoom() {
+    startFirebaseListeners() {
+        if (!this.gameRef) return;
+        
+        console.log('Starting Firebase listeners...');
+        
+        // Listen for game state changes
+        const gameListener = this.gameRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (!data) return;
+            
+            console.log('Firebase game state update:', data);
+            
+            // Check for guest connection (host only)
+            if (this.isHost && data.guest && data.guest === 'connected' && !this.connected) {
+                this.connected = true;
+                console.log('Guest connected via Firebase!');
+                if (this.onConnectionCallback) {
+                    this.onConnectionCallback();
+                }
+            }
+        });
+        
+        this.listeners.push({ ref: this.gameRef, listener: gameListener });
+        
+        // Listen for messages
+        this.messagesRef = window.firebaseDB.ref('messages/' + this.roomId);
+        const messagesListener = this.messagesRef.on('child_added', (snapshot) => {
+            const message = snapshot.val();
+            if (!message) return;
+            
+            console.log('Firebase message received:', message);
+            
+            // Only process messages for the other player
+            if ((this.isHost && message.from === 'guest') || 
+                (this.isGuest && message.from === 'host')) {
+                
+                if (this.onMessageCallback) {
+                    this.onMessageCallback(message.data);
+                }
+                
+                // Remove processed message
+                snapshot.ref.remove();
+            }
+        });
+        
+        this.listeners.push({ ref: this.messagesRef, listener: messagesListener });
+    }
+
+    async sendMessage(data) {
+        console.log('Sending Firebase message:', data);
+        
+        if (this.fallbackMode) {
+            // Use localStorage fallback
+            const targetKey = this.isHost ? `messages_to_guest_${this.roomId}` : `messages_to_host_${this.roomId}`;
+            const messages = JSON.parse(localStorage.getItem(targetKey) || '[]');
+            messages.push(data);
+            localStorage.setItem(targetKey, JSON.stringify(messages));
+            
+            // Also broadcast for cross-tab communication
+            localStorage.setItem(`broadcast_${this.roomId}`, JSON.stringify(data));
+            setTimeout(() => {
+                localStorage.removeItem(`broadcast_${this.roomId}`);
+            }, 100);
+            
+            return true;
+        }
+        
+        if (!this.messagesRef) {
+            console.error('No Firebase messages reference');
+            return false;
+        }
+        
         try {
-            const response = await fetch(`${this.baseUrl}/${this.binId}/latest`);
-            if (response.ok) {
-                const result = await response.json();
-                const roomData = result.record || result;
-                
-                // Mark guest as connected
-                roomData.guest = 'connected';
-                roomData.guestName = 'Guest'; // Will be updated later
-                
-                await this.updateRoom(roomData);
-                console.log('Successfully joined room');
+            const message = {
+                from: this.isHost ? 'host' : 'guest',
+                data: data,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            };
+            
+            await this.messagesRef.push(message);
+            
+            // Update last activity
+            if (this.gameRef) {
+                await this.gameRef.child('lastActivity').set(firebase.database.ServerValue.TIMESTAMP);
             }
+            
+            return true;
+            
         } catch (error) {
-            console.error('Failed to join existing room:', error);
-            throw error;
+            console.error('Failed to send Firebase message:', error);
+            return false;
         }
     }
 
-    startHostPolling() {
-        console.log('Host starting server polling...');
-        
-        this.pollInterval = setInterval(async () => {
-            try {
-                const response = await fetch(`${this.baseUrl}/${this.binId}/latest`);
-                if (response.ok) {
-                    const result = await response.json();
-                    const roomData = result.record || result;
-                    
-                    // Check if guest joined
-                    if (roomData.guest && !this.connected) {
-                        this.connected = true;
-                        console.log('Guest connected!');
-                        if (this.onConnectionCallback) {
-                            this.onConnectionCallback();
-                        }
-                    }
-                    
-                    // Process guest messages
-                    if (roomData.guestMessages && roomData.guestMessages.length > 0) {
-                        roomData.guestMessages.forEach(msg => {
-                            if (this.onMessageCallback) {
-                                this.onMessageCallback(msg);
-                            }
-                        });
-                        
-                        // Clear processed messages
-                        roomData.guestMessages = [];
-                        await this.updateRoom(roomData);
-                    }
-                }
-            } catch (error) {
-                console.error('Host polling error:', error);
-            }
-        }, 2000);
+    onMessage(callback) {
+        this.onMessageCallback = callback;
     }
 
-    startGuestPolling() {
-        console.log('Guest starting server polling...');
-        
-        this.pollInterval = setInterval(async () => {
-            try {
-                const response = await fetch(`${this.baseUrl}/${this.binId}/latest`);
-                if (response.ok) {
-                    const result = await response.json();
-                    const roomData = result.record || result;
-                    
-                    // Process host messages
-                    if (roomData.hostMessages && roomData.hostMessages.length > 0) {
-                        roomData.hostMessages.forEach(msg => {
-                            if (this.onMessageCallback) {
-                                this.onMessageCallback(msg);
-                            }
-                        });
-                        
-                        // Clear processed messages
-                        roomData.hostMessages = [];
-                        await this.updateRoom(roomData);
-                    }
-                }
-            } catch (error) {
-                console.error('Guest polling error:', error);
-            }
-        }, 2000);
+    onConnection(callback) {
+        this.onConnectionCallback = callback;
     }
 
-    // Fallback methods using localStorage with cross-tab communication
+    onDisconnect(callback) {
+        this.onDisconnectCallback = callback;
+    }
+
+    disconnect() {
+        console.log('Disconnecting from Firebase...');
+        
+        // Remove all Firebase listeners
+        this.listeners.forEach(({ ref, listener }) => {
+            ref.off('value', listener);
+            ref.off('child_added', listener);
+        });
+        this.listeners = [];
+        
+        // Clean up localStorage
+        if (this.roomId) {
+            localStorage.removeItem(`guest_${this.roomId}`);
+            localStorage.removeItem(`messages_to_host_${this.roomId}`);
+            localStorage.removeItem(`messages_to_guest_${this.roomId}`);
+        }
+        
+        this.connected = false;
+        this.gameRef = null;
+        this.messagesRef = null;
+    }
+
+    isConnected() {
+        return this.connected;
+    }
+
+    // Fallback methods for localStorage (same as before)
     startFallbackHostPolling() {
-        console.log('Host using fallback polling...');
+        console.log('Host using localStorage fallback...');
         
         // Update URL to include room info for sharing
         const newUrl = `${window.location.pathname}#room-${this.roomId}`;
@@ -237,7 +273,7 @@ class MultiplayerGame {
     }
 
     startFallbackGuestPolling() {
-        console.log('Guest using fallback polling...');
+        console.log('Guest using localStorage fallback...');
         
         // Mark guest as connected in localStorage
         localStorage.setItem(`guest_${this.roomId}`, JSON.stringify({
@@ -273,117 +309,21 @@ class MultiplayerGame {
             }
         });
     }
-
-    async updateRoom(data) {
-        if (!this.binId || this.fallbackMode) return;
-        
-        try {
-            const response = await fetch(`${this.baseUrl}/${this.binId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data)
-            });
-            
-            if (!response.ok) {
-                console.error('Failed to update room:', response.status, await response.text());
-            }
-        } catch (error) {
-            console.error('Failed to update room:', error);
-        }
-    }
-
-    async sendMessage(data) {
-        console.log('Sending message:', data);
-        
-        if (this.fallbackMode) {
-            // Use localStorage fallback with broadcast for cross-tab communication
-            const targetKey = this.isHost ? `messages_to_guest_${this.roomId}` : `messages_to_host_${this.roomId}`;
-            const messages = JSON.parse(localStorage.getItem(targetKey) || '[]');
-            messages.push(data);
-            localStorage.setItem(targetKey, JSON.stringify(messages));
-            
-            // Also broadcast for cross-tab communication
-            localStorage.setItem(`broadcast_${this.roomId}`, JSON.stringify(data));
-            setTimeout(() => {
-                localStorage.removeItem(`broadcast_${this.roomId}`);
-            }, 100);
-            
-            return true;
-        }
-        
-        if (!this.binId) {
-            console.error('No bin ID available for sending message');
-            return false;
-        }
-        
-        try {
-            // Get current room data from jsonbin.io
-            const response = await fetch(`${this.baseUrl}/${this.binId}/latest`);
-            if (!response.ok) {
-                throw new Error('Failed to fetch room data');
-            }
-            
-            const result = await response.json();
-            // jsonbin.io wraps data in a 'record' field
-            const roomData = result.record || result;
-            
-            // Add message to appropriate queue
-            if (this.isHost) {
-                if (!roomData.hostMessages) roomData.hostMessages = [];
-                roomData.hostMessages.push(data);
-            } else {
-                if (!roomData.guestMessages) roomData.guestMessages = [];
-                roomData.guestMessages.push(data);
-            }
-            
-            // Update room
-            await this.updateRoom(roomData);
-            return true;
-            
-        } catch (error) {
-            console.error('Failed to send message via cloud, falling back to localStorage:', error);
-            // Fall back to localStorage if cloud fails
-            const targetKey = this.isHost ? `messages_to_guest_${this.roomId}` : `messages_to_host_${this.roomId}`;
-            const messages = JSON.parse(localStorage.getItem(targetKey) || '[]');
-            messages.push(data);
-            localStorage.setItem(targetKey, JSON.stringify(messages));
-            return true;
-        }
-    }
-
-    onMessage(callback) {
-        this.onMessageCallback = callback;
-    }
-
-    onConnection(callback) {
-        this.onConnectionCallback = callback;
-    }
-
-    onDisconnect(callback) {
-        this.onDisconnectCallback = callback;
-    }
-
-    disconnect() {
-        if (this.pollInterval) {
-            clearInterval(this.pollInterval);
-        }
-        
-        // Clean up localStorage
-        if (this.roomId) {
-            localStorage.removeItem(`guest_${this.roomId}`);
-            localStorage.removeItem(`messages_to_host_${this.roomId}`);
-            localStorage.removeItem(`messages_to_guest_${this.roomId}`);
-        }
-        
-        this.connected = false;
-    }
-
-    isConnected() {
-        return this.connected;
-    }
 }
 
 // Global multiplayer instance
 window.multiplayer = new MultiplayerGame();
+
+// Debug helper - expose debugging info globally
+window.debugMultiplayer = () => {
+    console.log('=== MULTIPLAYER DEBUG INFO ===');
+    console.log('Firebase available:', !!window.firebaseDB);
+    console.log('isHost:', window.multiplayer.isHost);
+    console.log('isGuest:', window.multiplayer.isGuest);
+    console.log('roomId:', window.multiplayer.roomId);
+    console.log('connected:', window.multiplayer.connected);
+    console.log('fallbackMode:', window.multiplayer.fallbackMode);
+    console.log('gameRef:', window.multiplayer.gameRef);
+    console.log('Current URL:', window.location.href);
+    console.log('URL Hash:', window.location.hash);
+};
