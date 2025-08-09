@@ -575,7 +575,7 @@ function playAgain() {
     // Continue to next round
     if (isMultiplayer) {
         if (isHost) {
-            // Get new invention for next round
+            // Only host generates new invention for next round
             currentInvention = getRandomInvention();
             
             console.log('Host sending nextRound with invention:', currentInvention.name);
@@ -585,9 +585,13 @@ function playAgain() {
                 scores: { player1Score, player2Score },
                 invention: currentInvention
             });
+            resetRound();
+            startNextRound();
+        } else {
+            // Guest waits for host to send next round data
+            resetRound();
+            // startNextRound will be called when 'nextRound' message is received
         }
-        resetRound();
-        startNextRound();
     } else {
         resetRound();
         startNextRound();
@@ -672,13 +676,14 @@ function resetRound() {
 }
 
 function startNextRound() {
-    // Only host generates new invention (guests get it via message)
-    if (!isMultiplayer || isHost) {
+    // Only non-multiplayer games generate new invention here
+    // Multiplayer guests get invention via message, host generates in playAgain()
+    if (!isMultiplayer) {
         currentInvention = getRandomInvention();
     }
     
     if (isMultiplayer) {
-        // Use multiplayer UI
+        // Use multiplayer UI - currentInvention should already be set
         startMultiplayerRound();
     } else {
         // Use local game UI
@@ -742,12 +747,24 @@ document.getElementById('play-again').addEventListener('click', () => {
         // Start completely new game
         resetGame();
         if (isMultiplayer) {
+            if (isHost) {
+                multiplayer.sendMessage({ type: 'newGame' });
+            }
             showSection('create-room');
         } else {
             showSection('game-setup');
         }
     } else {
-        // Continue to next round
+        // Continue to next round - ONLY host can control this
+        if (isMultiplayer && !isHost) {
+            // Guest just waits - show waiting message
+            const button = document.getElementById('play-again');
+            button.textContent = 'Waiting for host...';
+            button.disabled = true;
+            return;
+        }
+        
+        // Host or local game continues
         playAgain();
     }
 });
